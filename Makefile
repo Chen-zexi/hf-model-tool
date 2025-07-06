@@ -1,4 +1,4 @@
-.PHONY: help install test test-cov lint format type-check clean build publish dev-install qa qa-relaxed
+.PHONY: help install test test-simple test-cov lint format type-check clean build publish dev-install qa qa-relaxed qa-simple
 
 help:  ## Show this help message
 	@echo "HF-MODEL-TOOL Development Commands"
@@ -11,9 +11,15 @@ install:  ## Install package in development mode
 dev-install:  ## Install with development dependencies
 	pip install -e ".[dev]"
 
-test:  ## Run tests
+test-simple:  ## Run tests without coverage
 	pytest tests/ -v
 
+test:  ## Run tests with coverage (requires pytest-cov)
+	@pytest tests/ -v --cov=hf_model_tool --cov-report=term-missing --cov-report=xml || \
+	(echo "Coverage failed, running simple tests..." && pytest tests/ -v)
+
+test-cov:  ## Run tests with coverage reporting
+	pytest tests/ -v --cov=hf_model_tool --cov-report=term-missing --cov-report=xml
 
 lint:  ## Run linting (flake8)
 	flake8 hf_model_tool/ tests/
@@ -24,10 +30,20 @@ format:  ## Format code with black
 format-check:  ## Check if code is formatted
 	black --check hf_model_tool/ tests/
 
+format-fix:  ## Auto-fix formatting issues
+	@echo "Auto-fixing formatting..."
+	@black hf_model_tool/ tests/ || echo "Formatting completed"
+
 type-check:  ## Run type checking with mypy
 	mypy hf_model_tool/
 
-qa: format-check lint type-check  ## Run all quality checks
+qa: format-check lint type-check  ## Run all quality checks (strict)
+
+qa-simple: format-fix test-simple  ## Run basic quality checks with auto-fix
+	@echo "Running simple quality checks..."
+	@flake8 hf_model_tool/ tests/ || echo "⚠ Linting issues found (continuing)"
+	@mypy hf_model_tool/ || echo "⚠ Type checking issues found (continuing)"
+	@echo "✓ Simple quality checks completed"
 
 qa-relaxed:  ## Run quality checks with auto-fixes and allow failures
 	@echo "Running relaxed quality checks..."

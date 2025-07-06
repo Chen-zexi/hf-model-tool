@@ -132,9 +132,9 @@ class TestGetItems:
 
             for dir_name, expected_type in test_cases:
                 asset_dir = cache_dir / dir_name
-                asset_dir.mkdir(parents=True)
+                asset_dir.mkdir(parents=True, exist_ok=True)
                 blobs_dir = asset_dir / "blobs"
-                blobs_dir.mkdir()
+                blobs_dir.mkdir(exist_ok=True)
                 (blobs_dir / "file").write_bytes(b"x" * 100)
 
             items = get_items(str(cache_dir))
