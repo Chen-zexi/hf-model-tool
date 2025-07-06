@@ -1,215 +1,304 @@
-
 #!/usr/bin/env python3
-import os
-import shutil
-import inquirer
-from datetime import datetime
-from collections import defaultdict
+"""
+HF-MODEL-TOOL: HuggingFace Model Management Tool
+
+A CLI tool for managing locally downloaded HuggingFace models and datasets
+"""
+import sys
+import logging
+from typing import NoReturn
+from pathlib import Path
+
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.text import Text
+from rich.align import Align
+from rich.columns import Columns
 
-BACK_CHOICE = "[<- Back]"
+from .cache import get_items
+from .ui import (
+    print_items,
+    delete_assets_workflow,
+    deduplicate_assets_workflow,
+    view_asset_details_workflow,
+)
+from .navigation import unified_prompt
 
-def get_items(cache_dir):
-    items = []
-    for item_dir in os.listdir(cache_dir):
-        item_path = os.path.join(cache_dir, item_dir)
-        if os.path.isdir(item_path):
-            blobs_path = os.path.join(item_path, "blobs")
-            size = 0
-            if os.path.isdir(blobs_path):
-                try:
-                    size = sum(os.path.getsize(os.path.join(blobs_path, filename)) for filename in os.listdir(blobs_path))
-                except FileNotFoundError:
-                    pass # Ignore issues with concurrently deleted files
-            
-            if size > 0:
-                items.append({
-                    "name": item_dir,
-                    "size": size,
-                    "date": datetime.fromtimestamp(os.path.getmtime(item_path)),
-                    "type": "dataset" if item_dir.lower().startswith("datasets--") else "model",
-                    "path": item_path
-                })
-    return items
+# Configure logging - only to file, not console
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(Path.home() / ".hf-model-tool.log")
+        # Removed StreamHandler to stop console logging
+    ],
+)
+logger = logging.getLogger(__name__)
 
-def group_and_identify_duplicates(items):
-    grouped_for_dupes = defaultdict(list)
-    for item in items:
-        parts = item["name"].lower().split("--")
-        if len(parts) > 2:
-            key = (parts[0], parts[1], '--'.join(parts[2:]))
-            grouped_for_dupes[key].append(item["name"])
 
-    duplicate_sets = {frozenset(v) for v in grouped_for_dupes.values() if len(v) > 1}
-    is_duplicate = {name for dup_set in duplicate_sets for name in dup_set}
+def show_welcome_screen() -> None:
+    """
+    Display a welcome screen with ASCII art and system info
 
-    grouped_for_display = {"models": defaultdict(list), "datasets": defaultdict(list)}
-    for item in items:
-        parts = item["name"].split("--")
-        if len(parts) > 1:
-            publisher = parts[1]
-            item['display_name'] = '--'.join(parts[2:]) if len(parts) > 2 else item['name']
-            item['is_duplicate'] = item['name'] in is_duplicate
-            category = item["type"] + "s"
-            grouped_for_display[category][publisher].append(item)
-            
-    return grouped_for_display, duplicate_sets
-
-def print_items(items, sort_by='size'):
+    Shows the HF-MODEL-TOOL logo, system status, feature overview,
+    and navigation help in a professionally formatted layout.
+    """
     console = Console()
-    total_size = sum(item['size'] for item in items)
-    console.print(Panel(f"[bold cyan]Grand Total All Assets: {total_size / 1e9:.2f} GB[/bold cyan]", expand=False))
+    logger.info("Displaying welcome screen")
 
-    grouped, _ = group_and_identify_duplicates(items)
-    
-    sorted_categories = sorted(grouped.items(), key=lambda x: sum(item['size'] for pub_items in x[1].values() for item in pub_items), reverse=(sort_by == 'size'))
+    try:
+        # ASCII art logo
+        logo = """
+██   ██ ███████       ███    ███  ██████  ██████  ███████ ██           ████████  ██████   ██████  ██
+██   ██ ██            ████  ████ ██    ██ ██   ██ ██      ██              ██    ██    ██ ██    ██ ██
+███████ █████   █████ ██ ████ ██ ██    ██ ██   ██ █████   ██      █████   ██    ██    ██ ██    ██ ██
+██   ██ ██            ██  ██  ██ ██    ██ ██   ██ ██      ██              ██    ██    ██ ██    ██ ██
+██   ██ ██            ██      ██  ██████  ██████  ███████ ███████         ██     ██████   ██████  ███████
+"""
 
-    for category, publishers in sorted_categories:
-        if not publishers:
-            continue
-        
-        category_size = sum(item['size'] for pub_items in publishers.values() for item in pub_items)
-        
-        table = Table(title=f"[bold green]{category.upper()} (Total: {category_size / 1e9:.2f} GB)[/bold green]")
-        table.add_column("Publisher/Name", style="cyan", no_wrap=True)
-        table.add_column("Size (GB)", style="magenta", justify="right")
-        table.add_column("Modified Date", style="yellow", justify="right")
-        table.add_column("Notes", style="red")
+        # Create colored logo
+        logo_text = Text(logo, style="bold cyan")
 
-        sorted_publishers = sorted(publishers.items(), key=lambda x: sum(item['size'] for item in x[1]), reverse=(sort_by == 'size'))
+        # Subtitle and version
+        subtitle = Text(
+            "🤗 HuggingFace Model Management Tool",
+            style="bold yellow",
+            justify="center",
+        )
+        version_text = Text("v0.1.0", style="dim white", justify="center")
+        tagline = Text(
+            "Organize • Clean • Optimize Your Local AI Assets",
+            style="italic green",
+            justify="center",
+        )
 
-        for publisher, item_list in sorted_publishers:
-            publisher_size = sum(item['size'] for item in item_list)
-            table.add_row(f"[bold blue]Publisher: {publisher} (Total: {publisher_size / 1e9:.2f} GB)[/bold blue]")
+        # System info with error handling
+        cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
 
-            if sort_by == 'size':
-                sorted_list = sorted(item_list, key=lambda x: x['size'], reverse=True)
-            elif sort_by == 'date':
-                sorted_list = sorted(item_list, key=lambda x: x['date'], reverse=True)
-            else: # name
-                sorted_list = sorted(item_list, key=lambda x: x['display_name'])
+        if cache_dir.exists():
+            try:
+                # Quick scan for asset count
+                items = get_items(str(cache_dir))
+                total_size = (
+                    sum(item["size"] for item in items if isinstance(item["size"], int))
+                    / 1e9
+                )  # Convert to GB
+                asset_count = len(items)
+                status = f"✅ Found {asset_count} assets using {total_size:.1f} GB"
+                status_style = "bold green"
+                logger.info(
+                    f"Cache scan successful: {asset_count} assets, {total_size:.1f} GB"
+                )
+            except Exception as e:
+                status = "⚠️  Cache directory found but scan failed"
+                status_style = "bold yellow"
+                logger.warning(f"Cache scan failed: {e}")
+        else:
+            status = "❌ No HuggingFace cache found"
+            status_style = "bold red"
+            logger.info("No HuggingFace cache directory found")
 
-            for item in sorted_list:
-                duplicate_marker = "(duplicate)" if item['is_duplicate'] else ""
-                table.add_row(f"  {item['display_name']}", f"{item['size'] / 1e9:.2f}", item['date'].strftime('%Y-%m-%d %H:%M:%S'), duplicate_marker)
-        
-        console.print(table)
+        # Features list
+        features = Text()
+        features.append("🎯 Features:\n", style="bold white")
+        features.append("  • ", style="cyan")
+        features.append("Asset Listing", style="white")
+        features.append(" - View models & datasets with size info\n", style="dim white")
+        features.append("  • ", style="cyan")
+        features.append("Duplicate Detection", style="white")
+        features.append(" - Find and clean duplicate downloads\n", style="dim white")
+        features.append("  • ", style="cyan")
+        features.append("Asset Details", style="white")
+        features.append(" - View model configs and dataset info\n", style="dim white")
 
-def delete_items_workflow(items, cache_dir):
-    if not items:
-        print("No items to delete.")
-        return
+        # Quick help
+        help_text = Text()
+        help_text.append("🚀 Quick Start:\n", style="bold white")
+        help_text.append(
+            "  Navigate with ↑/↓ arrows • Press Enter to select\n", style="dim white"
+        )
+        help_text.append("  Use '", style="dim white")
+        help_text.append("← Back", style="cyan")
+        help_text.append("' and '", style="dim white")
+        help_text.append("→ Config", style="cyan")
+        help_text.append("' for navigation\n", style="dim white")
+        help_text.append("  '", style="dim white")
+        help_text.append("Main Menu", style="cyan")
+        help_text.append("' and '", style="dim white")
+        help_text.append("Exit", style="cyan")
+        help_text.append("' available everywhere", style="dim white")
 
-    grouped, _ = group_and_identify_duplicates(items)
+        # Display the welcome screen with centered logo
+        centered_logo = Align.center(logo_text)
+        console.print(Panel(centered_logo, border_style="bright_blue", padding=(1, 2)))
+        console.print(Align.center(subtitle))
+        console.print(Align.center(version_text))
+        console.print(Align.center(tagline))
+        console.print("")
 
-    while True: # Main delete loop
-        category_choices = [cat.capitalize() for cat in grouped.keys() if grouped[cat]] + [BACK_CHOICE]
-        questions = [inquirer.List('category', message="Which category to delete from?", choices=category_choices, carousel=True)]
-        answers = inquirer.prompt(questions)
-        if not answers or answers['category'] == BACK_CHOICE: break
-        selected_category = answers['category'].lower()
+        # Status info
+        status_text = Text(status, style=status_style)
+        console.print(Align.center(status_text))
+        console.print("")
 
-        while True: # Publisher loop
-            publisher_choices = list(grouped[selected_category].keys()) + [BACK_CHOICE]
-            questions = [inquirer.List('publisher', message="Which publisher?", choices=publisher_choices, carousel=True)]
-            answers = inquirer.prompt(questions)
-            if not answers or answers['publisher'] == BACK_CHOICE: break
-            selected_publisher = answers['publisher']
+        # Features and help
+        console.print("")
+        columns = Columns(
+            [
+                Panel(
+                    features,
+                    title="[bold cyan]Features[/bold cyan]",
+                    border_style="cyan",
+                ),
+                Panel(
+                    help_text,
+                    title="[bold green]Navigation[/bold green]",
+                    border_style="green",
+                ),
+            ],
+            equal=True,
+            expand=True,
+        )
+        console.print(columns)
 
-            while True: # Item loop
-                items_to_delete_choices = grouped[selected_category][selected_publisher]
-                choices = [f"{item['display_name']} ({item['size']/1e9:.2f} GB)" for item in items_to_delete_choices]
-                questions = [inquirer.Checkbox('selected_items', message="Select items to delete (space to select, enter to confirm)", choices=choices)]
-                answers = inquirer.prompt(questions)
-                if not answers: break # User pressed Ctrl+C
+        console.print("")
+        console.print(
+            Panel(
+                "[bold white]Press Enter to continue...[/bold white]",
+                style="dim",
+                border_style="dim",
+            )
+        )
 
-                if not answers['selected_items']:
-                    q = [inquirer.List('action', message="Nothing selected.", choices=["Go back and select items", "Return to publisher menu"], carousel=True)]
-                    a = inquirer.prompt(q)
-                    if not a or a['action'] == "Return to publisher menu":
-                        break # Exit item loop, back to publisher
-                    else:
-                        continue # Restart item loop
+        # Wait for user input
+        try:
+            input()
+        except (KeyboardInterrupt, EOFError):
+            logger.info("User interrupted welcome screen")
+            sys.exit(0)
 
-                confirm = inquirer.confirm(f"Are you sure you want to delete {len(answers['selected_items'])} items?", default=False)
-                if confirm:
-                    for choice_str in answers['selected_items']:
-                        item_name_to_find = choice_str.split(' ')[0]
-                        for item in items_to_delete_choices:
-                            if item['display_name'] == item_name_to_find:
-                                shutil.rmtree(item['path'])
-                                print(f"Removed: {item['name']}")
-                                break
-                else:
-                    print("Deletion cancelled.")
-                break # Exit item loop after action
+    except Exception as e:
+        logger.error(f"Error displaying welcome screen: {e}")
+        console.print(f"[red]Error displaying welcome screen: {e}[/red]")
+        console.print("[yellow]Continuing to main menu...[/yellow]")
 
-def main():
-    cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
 
-    while True:
-        questions = [
-            inquirer.List('action',
-                          message="What do you want to do?",
-                          choices=[
-                              'List by size (default)',
-                              'List by date',
-                              'List by name',
-                              'Delete items...',
-                              'Deduplicate items',
-                              'Exit'
-                          ],
-            ),
-        ]
-        answers = inquirer.prompt(questions)
-        if not answers: break
-        action = answers['action']
+def main() -> NoReturn:
+    """
+    Main application entry point.
 
-        items = get_items(cache_dir)
+    Manages the primary application loop, handles user interactions,
+    and coordinates between different workflows.
+    """
+    logger.info("Starting HF-MODEL-TOOL application")
 
-        if action.startswith('List'):
-            sort_by = 'size'
-            if 'date' in action: sort_by = 'date'
-            if 'name' in action: sort_by = 'name'
-            print_items(items, sort_by=sort_by)
+    try:
+        cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
 
-        elif action == 'Delete items...':
-            delete_items_workflow(items, cache_dir)
+        # Show welcome screen on first run
+        show_welcome_screen()
 
-        elif action == 'Deduplicate items':
-            _, duplicate_sets = group_and_identify_duplicates(items)
-            if not duplicate_sets: print("No duplicates found."); continue
+        while True:
+            try:
+                action = unified_prompt(
+                    "action",
+                    "Main Menu",
+                    ["List Assets", "Manage Assets...", "View Asset Details", "Quit"],
+                    allow_back=False,
+                )
 
-            print(f"Found {len(duplicate_sets)} set(s) of duplicates.")
-            for dup_set in duplicate_sets:
-                dup_items = [item for item in items if item['name'] in dup_set]
-                dup_items.sort(key=lambda x: x['date'], reverse=True)
-                
-                choices = [f"{i['name']} ({i['date'].strftime('%Y-%m-%d')}, {i['size']/1e9:.2f} GB)" for i in dup_items] + [BACK_CHOICE]
-                questions = [inquirer.List('item_to_keep', message=f"Select version of '{dup_items[0]['display_name']}' to KEEP (newest is default)", choices=choices, carousel=True)]
-                answers = inquirer.prompt(questions)
-                if not answers or answers['item_to_keep'] == BACK_CHOICE: continue
+                if not action or action == "Quit":
+                    # Show goodbye message
+                    console = Console()
+                    console.print("")
+                    console.print(
+                        Panel(
+                            "[bold cyan]Thanks for using HF-MODEL-TOOL![/bold cyan]\n"
+                            + "[dim white]Keep your AI assets organized! 🤗[/dim white]",
+                            style="dim",
+                            border_style="blue",
+                        )
+                    )
+                    logger.info("User quit application")
+                    break
 
-                item_to_keep_name = answers['item_to_keep'].split(' ')[0]
-                items_to_delete = [item for item in dup_items if item['name'] != item_to_keep_name]
-                
-                print("The following items will be deleted:")
-                for item in items_to_delete:
-                    print(f"- {item['name']}")
-                
-                confirm = inquirer.confirm(f"Are you sure you want to delete {len(items_to_delete)} duplicate(s)?", default=False)
-                if confirm:
-                    for item in items_to_delete:
-                        shutil.rmtree(item['path'])
-                        print(f"Removed duplicate: {item['name']}")
-                else:
-                    print("Deduplication for this set cancelled.")
-            print("Deduplication complete.")
+                # Handle special navigation returns
+                if action == "MAIN_MENU":
+                    continue  # Stay in main menu loop
 
-        elif action == 'Exit':
-            break
+                # Handle sort options returned from config
+                if action and action.startswith("Sort Assets"):
+                    sort_by = "size"
+                    if "Date" in action:
+                        sort_by = "date"
+                    elif "Name" in action:
+                        sort_by = "name"
+
+                    logger.info(f"Listing assets sorted by {sort_by}")
+                    items = get_items(str(cache_dir))
+                    print_items(items, sort_by=sort_by)
+                    continue
+
+                # Get items for main workflows
+                items = get_items(str(cache_dir))
+                logger.info(f"Loaded {len(items)} items from cache")
+
+                if action == "List Assets":
+                    # Default to size sorting, but user can change via config
+                    logger.info("Displaying asset list")
+                    print_items(items, sort_by="size")
+
+                elif action == "Manage Assets...":
+                    logger.info("Entering asset management workflow")
+                    while True:  # Manage submenu loop
+                        manage_choice = unified_prompt(
+                            "manage_action",
+                            "Asset Management Options",
+                            ["Delete Assets...", "Deduplicate Assets"],
+                            allow_back=True,
+                        )
+                        if not manage_choice or manage_choice == "BACK":
+                            break  # Back to main menu
+                        elif manage_choice == "MAIN_MENU":
+                            break  # Back to main menu
+
+                        if manage_choice == "Delete Assets...":
+                            logger.info("Starting delete assets workflow")
+                            result = delete_assets_workflow(items)
+                            if result == "MAIN_MENU":
+                                break  # Back to main menu
+                        elif manage_choice == "Deduplicate Assets":
+                            logger.info("Starting deduplicate assets workflow")
+                            result = deduplicate_assets_workflow(items)
+                            if result == "MAIN_MENU":
+                                break  # Back to main menu
+
+                elif action == "View Asset Details":
+                    logger.info("Starting view asset details workflow")
+                    result = view_asset_details_workflow(items)
+                    if result == "MAIN_MENU":
+                        continue  # Back to main menu
+
+            except Exception as e:
+                logger.error(f"Error in main loop: {e}")
+                console = Console()
+                console.print(f"[red]Error: {e}[/red]")
+                console.print("[yellow]Returning to main menu...[/yellow]")
+                continue
+
+    except KeyboardInterrupt:
+        logger.info("Application interrupted by user")
+        console = Console()
+        console.print("\n[yellow]Application interrupted by user[/yellow]")
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        console = Console()
+        console.print(f"[red]Fatal error: {e}[/red]")
+        sys.exit(1)
+    finally:
+        logger.info("Application terminated")
+        sys.exit(0)
+
 
 if __name__ == "__main__":
     try:
