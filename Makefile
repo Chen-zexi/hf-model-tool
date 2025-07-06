@@ -1,0 +1,56 @@
+.PHONY: help install test test-cov lint format type-check clean build publish dev-install
+
+help:  ## Show this help message
+	@echo "HF-MODEL-TOOL Development Commands"
+	@echo "=================================="
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+install:  ## Install package in development mode
+	pip install -e .
+
+dev-install:  ## Install with development dependencies
+	pip install -e .[dev]
+
+test:  ## Run tests
+	pytest tests/ -v
+
+
+lint:  ## Run linting (flake8)
+	flake8 hf_model_tool/ tests/
+
+format:  ## Format code with black
+	black hf_model_tool/ tests/
+
+format-check:  ## Check if code is formatted
+	black --check hf_model_tool/ tests/
+
+type-check:  ## Run type checking with mypy
+	mypy hf_model_tool/
+
+qa: format-check lint type-check  ## Run all quality checks
+
+clean:  ## Clean build artifacts
+	rm -rf build/
+	rm -rf dist/
+	rm -rf *.egg-info/
+	rm -rf htmlcov/
+	rm -rf .coverage
+	rm -rf coverage.xml
+	rm -rf .pytest_cache/
+	find . -type d -name __pycache__ -delete
+	find . -type f -name "*.pyc" -delete
+
+build:  ## Build package
+	python -m build
+
+publish-test:  ## Publish to TestPyPI
+	twine upload --repository testpypi dist/*
+
+publish:  ## Publish to PyPI
+	twine upload dist/*
+
+check-deps:  ## Check for outdated dependencies
+	pip list --outdated
+
+run:  ## Run the application
+	python -m hf_model_tool
