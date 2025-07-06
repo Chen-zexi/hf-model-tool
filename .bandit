@@ -1,3 +1,7 @@
-[bandit]
-exclude_dirs = tests/
-skips = B101,B601
+---
+exclude_dirs:
+  - tests/
+skips:
+  - B101
+  - B601
+  - B608

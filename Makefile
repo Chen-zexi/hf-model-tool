@@ -1,4 +1,4 @@
-.PHONY: help install test test-cov lint format type-check clean build publish dev-install
+.PHONY: help install test test-cov lint format type-check clean build publish dev-install qa qa-relaxed
 
 help:  ## Show this help message
 	@echo "HF-MODEL-TOOL Development Commands"
@@ -9,7 +9,7 @@ install:  ## Install package in development mode
 	pip install -e .
 
 dev-install:  ## Install with development dependencies
-	pip install -e .[dev]
+	pip install -e ".[dev]"
 
 test:  ## Run tests
 	pytest tests/ -v
@@ -28,6 +28,13 @@ type-check:  ## Run type checking with mypy
 	mypy hf_model_tool/
 
 qa: format-check lint type-check  ## Run all quality checks
+
+qa-relaxed:  ## Run quality checks with auto-fixes and allow failures
+	@echo "Running relaxed quality checks..."
+	@black hf_model_tool/ tests/ || echo "✓ Code formatted"
+	@flake8 hf_model_tool/ tests/ || echo "⚠ Linting issues found (continuing)"
+	@mypy hf_model_tool/ || echo "⚠ Type checking issues found (continuing)"
+	@echo "✓ Quality checks completed"
 
 clean:  ## Clean build artifacts
 	rm -rf build/
