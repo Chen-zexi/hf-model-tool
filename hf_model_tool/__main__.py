@@ -15,7 +15,7 @@ from rich.text import Text
 from rich.align import Align
 from rich.columns import Columns
 
-from .cache import get_items
+from .cache import scan_all_directories
 from .ui import (
     print_items,
     delete_assets_workflow,
@@ -73,30 +73,36 @@ def show_welcome_screen() -> None:
         )
 
         # System info with error handling
-        cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
-
-        if cache_dir.exists():
-            try:
-                # Quick scan for asset count
-                items = get_items(str(cache_dir))
+        # Quick scan for asset count across all configured directories
+        try:
+            items = scan_all_directories()
+            if items:
                 total_size = (
                     sum(item["size"] for item in items if isinstance(item["size"], int))
                     / 1e9
                 )  # Convert to GB
                 asset_count = len(items)
-                status = f"✅ Found {asset_count} assets using {total_size:.1f} GB"
+
+                # Count unique directories
+                unique_dirs = set(item.get("source_dir", "") for item in items)
+                dir_count = len(unique_dirs)
+
+                if dir_count > 1:
+                    status = f"✅ Found {asset_count} assets using {total_size:.1f} GB across {dir_count} directories"
+                else:
+                    status = f"✅ Found {asset_count} assets using {total_size:.1f} GB"
                 status_style = "bold green"
                 logger.info(
                     f"Cache scan successful: {asset_count} assets, {total_size:.1f} GB"
                 )
-            except Exception as e:
-                status = "⚠️  Cache directory found but scan failed"
+            else:
+                status = "⚠️  No HuggingFace assets found in configured directories"
                 status_style = "bold yellow"
-                logger.warning(f"Cache scan failed: {e}")
-        else:
-            status = "❌ No HuggingFace cache found"
-            status_style = "bold red"
-            logger.info("No HuggingFace cache directory found")
+                logger.info("No assets found in any configured directory")
+        except Exception as e:
+            status = "⚠️  Failed to scan directories"
+            status_style = "bold yellow"
+            logger.warning(f"Directory scan failed: {e}")
 
         # Features list
         features = Text()
@@ -193,8 +199,6 @@ def main() -> NoReturn:
     logger.info("Starting HF-MODEL-TOOL application")
 
     try:
-        cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
-
         # Show welcome screen on first run
         show_welcome_screen()
 
@@ -235,13 +239,28 @@ def main() -> NoReturn:
                         sort_by = "name"
 
                     logger.info(f"Listing assets sorted by {sort_by}")
-                    items = get_items(str(cache_dir))
+                    items = scan_all_directories()
                     print_items(items, sort_by=sort_by)
                     continue
 
                 # Get items for main workflows
-                items = get_items(str(cache_dir))
-                logger.info(f"Loaded {len(items)} items from cache")
+                items = scan_all_directories()
+                logger.info(f"Loaded {len(items)} items from all directories")
+
+                # Check if no items found
+                if not items:
+                    console = Console()
+                    console.print("\n[yellow]No HuggingFace assets found![/yellow]")
+                    console.print(
+                        "\nYou can add directories containing HuggingFace assets by:"
+                    )
+                    console.print("  1. Go to → Config → Manage Cache Directories")
+                    console.print(
+                        "  2. Add directories with your downloaded models/datasets"
+                    )
+                    console.print("\n[dim]Press Enter to continue...[/dim]")
+                    input()
+                    continue
 
                 if action == "List Assets":
                     # Default to size sorting, but user can change via config

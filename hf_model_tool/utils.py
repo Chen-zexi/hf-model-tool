@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def group_and_identify_duplicates(
-    items: List[Dict[str, Any]]
+    items: List[Dict[str, Any]],
 ) -> Tuple[Dict[str, Dict[str, List[Dict[str, Any]]]], Set[FrozenSet[str]]]:
     """
     Group assets by category/publisher and identify duplicate assets.

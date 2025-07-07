@@ -64,22 +64,19 @@ class TestShowConfig:
 
     @patch("hf_model_tool.navigation.unified_prompt")
     @patch("builtins.input")
-    @patch("builtins.print")
-    def test_show_config_future_features(
-        self, mock_print, mock_input, mock_unified_prompt
+    @patch("hf_model_tool.navigation.manage_directories")
+    def test_show_config_directory_management(
+        self, mock_manage_dirs, mock_input, mock_unified_prompt
     ):
-        """Test config menu future feature selections."""
+        """Test config menu directory management selection."""
         mock_input.return_value = ""  # User presses Enter
 
-        # Test cache directory feature
-        mock_unified_prompt.side_effect = ["Set Default Cache Directory", "BACK"]
+        # Test cache directory management
+        mock_unified_prompt.side_effect = ["Manage Cache Directories", "BACK"]
         result = show_config()
 
         assert result is None
-        mock_print.assert_called()
-        print_calls = [call[0][0] for call in mock_print.call_args_list]
-        output = "\n".join(print_calls)
-        assert "[Future Feature] Cache directory configuration" in output
+        mock_manage_dirs.assert_called_once()  # Verify manage_directories was called
 
 
 class TestUnifiedPrompt:

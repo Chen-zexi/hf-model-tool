@@ -7,14 +7,16 @@ providing structured access to locally stored models and datasets.
 """
 import logging
 from datetime import datetime
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Set
 from pathlib import Path
+
+from .config import ConfigManager
 
 logger = logging.getLogger(__name__)
 
 
 def get_items(
-    cache_dir: Union[str, Path]
+    cache_dir: Union[str, Path],
 ) -> List[Dict[str, Union[str, int, datetime]]]:
     """
     Scan HuggingFace cache directory and return structured asset information.
@@ -104,3 +106,45 @@ def get_items(
 
     logger.info(f"Found {len(items)} assets in cache")
     return items
+
+
+def scan_all_directories() -> List[Dict[str, Union[str, int, datetime]]]:
+    """
+    Scan all configured directories for HuggingFace assets.
+
+    Merges results from default cache and custom directories,
+    removing duplicates based on asset name.
+
+    Returns:
+        Consolidated list of assets from all directories
+    """
+    config_manager = ConfigManager()
+    all_directories = config_manager.get_all_directories()
+
+    all_items: List[Dict[str, Union[str, int, datetime]]] = []
+    seen_names: Set[str] = set()
+
+    logger.info(f"Scanning {len(all_directories)} directories for assets")
+
+    for directory in all_directories:
+        try:
+            items = get_items(directory)
+
+            # Add source directory to each item and check for duplicates
+            for item in items:
+                item_name = item["name"]
+                if item_name not in seen_names:
+                    item["source_dir"] = directory
+                    all_items.append(item)
+                    seen_names.add(item_name)
+                else:
+                    logger.debug(
+                        f"Skipping duplicate asset: {item_name} from {directory}"
+                    )
+
+        except (OSError, PermissionError) as e:
+            logger.warning(f"Failed to scan directory {directory}: {e}")
+            continue
+
+    logger.info(f"Found {len(all_items)} unique assets across all directories")
+    return all_items
