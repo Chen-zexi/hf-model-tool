@@ -51,9 +51,19 @@ def manage_directories() -> None:
             # Show custom directories
             if custom_dirs:
                 console.print("\n[bold]Custom Directories:[/bold]")
-                for i, dir_path in enumerate(custom_dirs, 1):
-                    exists = "✅" if Path(dir_path).exists() else "❌"
-                    console.print(f"  {i}. {exists} {dir_path}")
+                for i, dir_entry in enumerate(custom_dirs, 1):
+                    if isinstance(dir_entry, str):
+                        # Legacy format
+                        dir_path = dir_entry
+                        dir_type = "legacy"
+                        exists = "✅" if Path(dir_path).exists() else "❌"
+                        console.print(f"  {i}. {exists} [dim]({dir_type})[/dim] {dir_path}")
+                    elif isinstance(dir_entry, dict):
+                        # New format with type
+                        dir_path = dir_entry.get("path", "unknown")
+                        dir_type = dir_entry.get("type", "custom")
+                        exists = "✅" if Path(dir_path).exists() else "❌"
+                        console.print(f"  {i}. {exists} [cyan]({dir_type})[/cyan] {dir_path}")
             else:
                 console.print("\n[dim]No custom directories configured[/dim]")
 
@@ -100,7 +110,7 @@ def add_directory_path(config_manager: ConfigManager) -> None:
     try:
         console.print("\n[bold]Add Directory Path[/bold]")
         console.print(
-            "Enter the full path to a directory containing HuggingFace assets:"
+            "Enter the full path to a directory containing ML assets:"
         )
         console.print("[dim]Example: /home/user/my-models[/dim]\n")
 
@@ -125,19 +135,47 @@ def add_directory_path(config_manager: ConfigManager) -> None:
             input("Press Enter to continue...")
             return
 
-        # Check if it contains HF assets
+        # Ask user to choose path type
+        console.print("\n[bold]Select Directory Type:[/bold]")
+        console.print("[cyan]HuggingFace Cache:[/cyan] Standard HF cache with models--publisher--name structure")
+        console.print("[cyan]Custom Directory:[/cyan] LoRA adapters, fine-tuned models, or other custom formats")
+        console.print("[cyan]Auto-detect:[/cyan] Let the tool determine the type automatically")
+        
+        path_type_options = [
+            "HuggingFace Cache",
+            "Custom Directory", 
+            "Auto-detect"
+        ]
+        
+        path_type_choice = unified_prompt(
+            "path_type", "Choose Directory Type", path_type_options, allow_back=False
+        )
+        
+        if not path_type_choice:
+            console.print("[yellow]Cancelled[/yellow]")
+            return
+            
+        # Map choice to internal type
+        type_mapping = {
+            "HuggingFace Cache": "huggingface",
+            "Custom Directory": "custom",
+            "Auto-detect": "auto"
+        }
+        path_type = type_mapping[path_type_choice]
+
+        # Check if it contains assets based on type
         if not config_manager.validate_directory(str(path)):
             console.print(
-                "[yellow]Warning: Directory doesn't appear to contain HuggingFace assets[/yellow]"
+                f"[yellow]Warning: Directory doesn't appear to contain {path_type_choice.lower()} assets[/yellow]"
             )
             console.print("Add it anyway? (y/n): ", end="")
             if input().lower() != "y":
                 console.print("[yellow]Cancelled[/yellow]")
                 return
 
-        # Add directory
-        if config_manager.add_directory(str(path)):
-            console.print(f"[green]✅ Added directory: {path}[/green]")
+        # Add directory with type
+        if config_manager.add_directory(str(path), path_type):
+            console.print(f"[green]✅ Added {path_type_choice.lower()}: {path}[/green]")
         else:
             console.print(f"[yellow]Directory already configured: {path}[/yellow]")
 
@@ -158,10 +196,39 @@ def add_current_directory(config_manager: ConfigManager) -> None:
         console.print(f"\n[bold]Add Current Directory[/bold]")
         console.print(f"Current directory: [cyan]{current_dir}[/cyan]")
 
-        # Check if it contains HF assets
+        # Ask user to choose path type
+        console.print("\n[bold]Select Directory Type:[/bold]")
+        console.print("[cyan]HuggingFace Cache:[/cyan] Standard HF cache with models--publisher--name structure")
+        console.print("[cyan]Custom Directory:[/cyan] LoRA adapters, fine-tuned models, or other custom formats")
+        console.print("[cyan]Auto-detect:[/cyan] Let the tool determine the type automatically")
+        
+        path_type_options = [
+            "HuggingFace Cache",
+            "Custom Directory", 
+            "Auto-detect"
+        ]
+        
+        path_type_choice = unified_prompt(
+            "path_type", "Choose Directory Type", path_type_options, allow_back=False
+        )
+        
+        if not path_type_choice:
+            console.print("[yellow]Cancelled[/yellow]")
+            input("Press Enter to continue...")
+            return
+            
+        # Map choice to internal type
+        type_mapping = {
+            "HuggingFace Cache": "huggingface",
+            "Custom Directory": "custom",
+            "Auto-detect": "auto"
+        }
+        path_type = type_mapping[path_type_choice]
+
+        # Check if it contains assets
         if not config_manager.validate_directory(current_dir):
             console.print(
-                "\n[yellow]Warning: Current directory doesn't appear to contain HuggingFace assets[/yellow]"
+                f"\n[yellow]Warning: Current directory doesn't appear to contain {path_type_choice.lower()} assets[/yellow]"
             )
             console.print("Add it anyway? (y/n): ", end="")
             if input().lower() != "y":
@@ -169,9 +236,9 @@ def add_current_directory(config_manager: ConfigManager) -> None:
                 input("Press Enter to continue...")
                 return
 
-        # Add directory
-        if config_manager.add_directory(current_dir):
-            console.print(f"\n[green]Added current directory to configuration[/green]")
+        # Add directory with type
+        if config_manager.add_directory(current_dir, path_type):
+            console.print(f"\n[green]Added current directory as {path_type_choice.lower()}[/green]")
         else:
             console.print(f"\n[yellow]Current directory already configured[/yellow]")
 

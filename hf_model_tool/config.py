@@ -103,12 +103,13 @@ class ConfigManager:
             logger.error(f"Failed to save config: {e}")
             raise
 
-    def add_directory(self, directory: str) -> bool:
+    def add_directory(self, directory: str, path_type: str = "auto") -> bool:
         """
         Add a custom directory to configuration.
 
         Args:
             directory: Path to directory to add
+            path_type: Type of path - "huggingface", "custom", or "auto"
 
         Returns:
             True if directory was added, False if already exists
@@ -130,15 +131,27 @@ class ConfigManager:
         # Convert to string for JSON serialization
         directory_str = str(directory_path)
 
-        if directory_str in custom_dirs:
+        # Check if directory already exists (regardless of type)
+        existing_entry = next((entry for entry in custom_dirs 
+                              if (isinstance(entry, str) and entry == directory_str) or
+                                 (isinstance(entry, dict) and entry.get("path") == directory_str)), None)
+        
+        if existing_entry:
             logger.info(f"Directory already in config: {directory_str}")
             return False
 
-        custom_dirs.append(directory_str)
+        # Create directory entry with type information
+        directory_entry = {
+            "path": directory_str,
+            "type": path_type,
+            "added_date": datetime.now().isoformat()
+        }
+        
+        custom_dirs.append(directory_entry)
         config["custom_directories"] = custom_dirs
         self.save_config(config)
 
-        logger.info(f"Added directory to config: {directory_str}")
+        logger.info(f"Added {path_type} directory to config: {directory_str}")
         return True
 
     def remove_directory(self, directory: str) -> bool:
@@ -157,15 +170,23 @@ class ConfigManager:
         # Normalize path for comparison
         directory_path = str(Path(directory).resolve())
 
-        if directory_path not in custom_dirs:
-            # Also try the original string in case it's stored differently
-            if directory not in custom_dirs:
-                logger.info(f"Directory not in config: {directory}")
-                return False
-            custom_dirs.remove(directory)
-        else:
-            custom_dirs.remove(directory_path)
-
+        # Handle both old format (strings) and new format (dicts)
+        found_index = -1
+        for i, entry in enumerate(custom_dirs):
+            if isinstance(entry, str):
+                if entry == directory_path or entry == directory:
+                    found_index = i
+                    break
+            elif isinstance(entry, dict):
+                if entry.get("path") == directory_path:
+                    found_index = i
+                    break
+                    
+        if found_index == -1:
+            logger.info(f"Directory not in config: {directory}")
+            return False
+            
+        custom_dirs.pop(found_index)
         config["custom_directories"] = custom_dirs
         self.save_config(config)
 
@@ -174,10 +195,20 @@ class ConfigManager:
 
     def get_all_directories(self) -> List[str]:
         """
-        Get all configured directories including default cache.
+        Get all configured directories including default cache (legacy method).
 
         Returns:
             List of directory paths to scan
+        """
+        directory_info = self.get_all_directories_with_types()
+        return [info["path"] for info in directory_info]
+        
+    def get_all_directories_with_types(self) -> List[Dict[str, str]]:
+        """
+        Get all configured directories with their types.
+
+        Returns:
+            List of dictionaries with path and type information
         """
         config = self.load_config()
         directories = []
@@ -188,17 +219,42 @@ class ConfigManager:
             default_datasets = Path.home() / ".cache" / "huggingface" / "datasets"
 
             if default_hub.exists():
-                directories.append(str(default_hub))
+                directories.append({
+                    "path": str(default_hub),
+                    "type": "huggingface",
+                    "source": "default_cache"
+                })
             if default_datasets.exists():
-                directories.append(str(default_datasets))
+                directories.append({
+                    "path": str(default_datasets), 
+                    "type": "huggingface",
+                    "source": "default_cache"
+                })
 
-        # Add custom directories
+        # Add custom directories (handle both old and new formats)
         custom_dirs = config.get("custom_directories", [])
-        for dir_path in custom_dirs:
-            if Path(dir_path).exists():
-                directories.append(dir_path)
-            else:
-                logger.warning(f"Configured directory no longer exists: {dir_path}")
+        for dir_entry in custom_dirs:
+            if isinstance(dir_entry, str):
+                # Legacy format - assume custom type
+                if Path(dir_entry).exists():
+                    directories.append({
+                        "path": dir_entry,
+                        "type": "custom",
+                        "source": "custom_legacy"
+                    })
+                else:
+                    logger.warning(f"Configured directory no longer exists: {dir_entry}")
+            elif isinstance(dir_entry, dict):
+                # New format with type information
+                dir_path = dir_entry.get("path")
+                if dir_path and Path(dir_path).exists():
+                    directories.append({
+                        "path": dir_path,
+                        "type": dir_entry.get("type", "custom"),
+                        "source": "custom_configured"
+                    })
+                else:
+                    logger.warning(f"Configured directory no longer exists: {dir_path}")
 
         return directories
 
@@ -219,30 +275,53 @@ class ConfigManager:
 
     def validate_directory(self, directory: str) -> bool:
         """
-        Validate if a directory contains HuggingFace assets.
+        Validate if a directory contains ML assets (HuggingFace, LoRA, custom models).
 
         Args:
             directory: Path to directory to validate
 
         Returns:
-            True if directory appears to contain HF assets
+            True if directory appears to contain ML assets
         """
         directory_path = Path(directory)
 
         if not directory_path.exists() or not directory_path.is_dir():
             return False
 
+        # Import here to avoid circular imports
+        from .asset_detector import AssetDetector
+        detector = AssetDetector()
+        
         # Check for typical HuggingFace directory structure
         # Look for directories with "models--" or "datasets--" prefix
         # or directories containing "blobs" subdirectory
         for item in directory_path.iterdir():
             if item.is_dir():
+                # Check for HuggingFace format
                 if item.name.startswith(("models--", "datasets--")):
                     return True
                 if (item / "blobs").exists():
                     return True
+                
+                # Check for custom model patterns using asset detector
+                try:
+                    asset_info = detector.detect_asset_type(item)
+                    # Consider it valid if we can detect any asset type with content
+                    if asset_info["size"] > 0 and asset_info["type"] != "unknown":
+                        return True
+                except Exception:
+                    # Continue checking other directories if one fails
+                    continue
 
-        # Also check if this directory itself contains blobs
+        # Also check if this directory itself contains assets
+        try:
+            asset_info = detector.detect_asset_type(directory_path)
+            if asset_info["size"] > 0 and asset_info["type"] != "unknown":
+                return True
+        except Exception:
+            pass
+        
+        # Legacy check for blobs directory
         if (directory_path / "blobs").exists():
             return True
 
