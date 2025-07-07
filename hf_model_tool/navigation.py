@@ -375,23 +375,57 @@ def test_directory_scan(config_manager: ConfigManager) -> None:
 
 def show_help() -> None:
     """
-    Display navigation help and keyboard shortcuts.
+    Display comprehensive help including navigation, features, and usage.
 
-    Shows users how to navigate the application interface
-    and use available keyboard shortcuts and menu options.
+    Shows users how to navigate the application, manage directories,
+    understand supported asset types, and use command-line options.
     """
-    logger.info("Displaying navigation help")
+    logger.info("Displaying comprehensive help")
 
     try:
-        print("\n" + "=" * 50)
-        print("NAVIGATION HELP:")
+        print("\n" + "=" * 70)
+        print("HF-MODEL-TOOL HELP")
+        print("=" * 70)
+        
+        print("\nNAVIGATION:")
         print("  ↑/↓ arrows: Navigate menu options")
         print("  Enter: Select current option")
         print("  Select '← Back' to go to previous menu")
-        print("  Select '→ Config' for settings and options")
-        print("  Ctrl+C: Force exit")
-        print("=" * 50 + "\n")
-        input("Press Enter to continue...")
+        print("  Select '→ Config' for settings and directory management")
+        print("  Select 'Main Menu' to return to main menu from anywhere")
+        print("  Select 'Exit' or Ctrl+C to quit")
+        
+        print("\nSUPPORTED ASSET TYPES:")
+        print("  • HuggingFace Models & Datasets (cached downloads)")
+        print("  • LoRA Adapters (fine-tuned adapters from training frameworks)")
+        print("  • Custom Models (fine-tuned, merged, or other custom formats)")
+        print("  • Mixed Directories (automatically detects different types)")
+        
+        print("\nDIRECTORY MANAGEMENT:")
+        print("  1. Go to Config > Manage Cache Directories")
+        print("  2. Choose 'Add Directory Path' or 'Add Current Directory'")
+        print("  3. Select directory type:")
+        print("     - HuggingFace Cache: Standard HF cache structure")
+        print("     - Custom Directory: LoRA adapters and custom models")
+        print("     - Auto-detect: Let the tool determine the type")
+        
+        print("\nCOMMAND LINE USAGE:")
+        print("  hf-model-tool                           # Interactive mode")
+        print("  hf-model-tool -l                        # List all assets")
+        print("  hf-model-tool -m                        # Manage assets")
+        print("  hf-model-tool -v                        # View asset details")
+        print("  hf-model-tool -path ~/my-lora-models    # Add LoRA directory")
+        print("  hf-model-tool -path /data/custom-models # Add custom directory")
+        print("  hf-model-tool -l --sort name            # Sort by name")
+        
+        print("\nKEY FEATURES:")
+        print("  • Multi-directory scanning across different asset types")
+        print("  • Smart duplicate detection to save disk space")
+        print("  • Asset details and metadata viewing")
+        print("  • Flexible sorting options (size, name, date)")
+        
+        print("\n" + "=" * 70)
+        input("\nPress Enter to continue...")
     except (KeyboardInterrupt, EOFError):
         logger.info("Help display interrupted by user")
         return

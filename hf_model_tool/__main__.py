@@ -43,25 +43,19 @@ def create_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
         prog="hf-model-tool",
-        description="HuggingFace Model Management Tool - Organize, clean, and optimize your local AI assets",
+        description="HuggingFace Model Management Tool - Organize your local AI assets",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  hf-model-tool                    # Interactive mode
-  hf-model-tool -l                 # List all assets
-  hf-model-tool -m                 # Manage assets
-  hf-model-tool -v                 # View asset details
-  hf-model-tool -path /path/to/dir # Add directory to scan
-  hf-model-tool -l --sort name     # List assets sorted by name
+  hf-model-tool                           # Interactive mode
+  hf-model-tool -l                        # List all assets
+  hf-model-tool -m                        # Manage assets
+  hf-model-tool -v                        # View asset details
+  hf-model-tool -path ~/my-lora-models    # Add LoRA adapter directory
+  hf-model-tool -path /data/custom-models # Add custom model directory
+  hf-model-tool -l --sort name            # List assets sorted by name
         """,
     )
-    
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"hf-model-tool {__version__}",
-    )
-    
     parser.add_argument(
         "-l", "--list",
         action="store_true",
@@ -81,11 +75,12 @@ Examples:
         help="View asset details",
     )
     
+    
     parser.add_argument(
         "-path", "--add-path",
         type=str,
         metavar="PATH",
-        help="Add a directory path to scan for assets",
+        help="Add a directory containing AI assets (HuggingFace cache, LoRA adapters, custom models, etc.)",
     )
     
     parser.add_argument(
@@ -93,6 +88,12 @@ Examples:
         choices=["size", "name", "date"],
         default="size",
         help="Sort assets by size, name, or date (default: size)",
+    )
+    
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"hf-model-tool {__version__}",
     )
     
     return parser
@@ -286,14 +287,15 @@ def show_welcome_screen() -> None:
         features = Text()
         features.append("🎯 Features:\n", style="bold white")
         features.append("  • ", style="cyan")
-        features.append("Asset Listing", style="white")
-        features.append(" - View models & datasets with size info\n", style="dim white")
+        features.append("Smart Asset Detection", style="white")
+        features.append(" - LLM, LoRA Adapters, and Datasets\n", style="dim white")
         features.append("  • ", style="cyan")
-        features.append("Duplicate Detection", style="white")
-        features.append(" - Find and clean duplicate downloads\n", style="dim white")
+        features.append("Asset Management", style="white")
+        features.append(" - List, view details, and clean duplicates\n", style="dim white")
         features.append("  • ", style="cyan")
-        features.append("Asset Details", style="white")
-        features.append(" - View model configs and dataset info\n", style="dim white")
+        features.append("Multi-Directory Support", style="white")
+        features.append(" - Scan HuggingFace cache and custom directories\n", style="dim white")
+
 
         # Quick help
         help_text = Text()
@@ -306,11 +308,7 @@ def show_welcome_screen() -> None:
         help_text.append("' and '", style="dim white")
         help_text.append("→ Config", style="cyan")
         help_text.append("' for navigation\n", style="dim white")
-        help_text.append("  '", style="dim white")
-        help_text.append("Main Menu", style="cyan")
-        help_text.append("' and '", style="dim white")
-        help_text.append("Exit", style="cyan")
-        help_text.append("' available everywhere", style="dim white")
+        help_text.append("  Add directories via Config > Manage Directories\n", style="dim white")
 
         # Display the welcome screen with centered logo
         centered_logo = Align.center(logo_text)

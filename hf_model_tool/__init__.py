@@ -16,7 +16,7 @@ except ImportError:
     except ImportError:
         # If importlib_metadata is not available, use a simple fallback
         def version(package_name):
-            return "0.2.0"
+            return "0.2.1"
         
         class PackageNotFoundError(Exception):
             pass
@@ -43,7 +43,7 @@ def get_version():
             pass
         
         # Ultimate fallback
-        return "0.2.0"
+        return "0.2.1"
 
 __version__ = get_version()
 
