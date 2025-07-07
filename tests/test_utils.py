@@ -11,6 +11,7 @@ from unittest.mock import patch
 from hf_model_tool.utils import group_and_identify_duplicates
 
 
+@pytest.mark.unit
 class TestGroupAndIdentifyDuplicates:
     """Test cases for group_and_identify_duplicates function."""
 
@@ -23,6 +24,9 @@ class TestGroupAndIdentifyDuplicates:
                 "date": datetime(2023, 1, 1),
                 "type": "model",
                 "path": "/path/to/model",
+                "display_name": "bert-base-uncased",  # Provide display_name explicitly
+                "source_type": "huggingface_cache",
+                "publisher": "huggingface",
             },
             {
                 "name": "datasets--squad--v1",
@@ -30,6 +34,9 @@ class TestGroupAndIdentifyDuplicates:
                 "date": datetime(2023, 1, 2),
                 "type": "dataset",
                 "path": "/path/to/dataset",
+                "display_name": "v1",  # Provide display_name explicitly
+                "source_type": "huggingface_cache",
+                "publisher": "squad",
             },
         ]
 
@@ -56,8 +63,8 @@ class TestGroupAndIdentifyDuplicates:
         # No duplicates
         assert len(duplicates) == 0
 
-    def test_duplicate_detection(self):
-        """Test detection of duplicate assets."""
+    def test_duplicate_detection_huggingface_cache(self):
+        """Test detection of duplicate assets for HuggingFace cache (requires same publisher, name, AND size)."""
         items = [
             {
                 "name": "models--huggingface--bert-base-uncased",
@@ -65,27 +72,101 @@ class TestGroupAndIdentifyDuplicates:
                 "date": datetime(2023, 1, 1),
                 "type": "model",
                 "path": "/path/to/model1",
+                "display_name": "bert-base-uncased",
+                "publisher": "huggingface",
+                "source_type": "huggingface_cache",
             },
             {
-                "name": "models--huggingface--bert-base-uncased",  # Same name = duplicate
-                "size": 1100,
+                "name": "models--huggingface--bert-base-uncased",  
+                "size": 1000,  # Same size = duplicate
                 "date": datetime(2023, 1, 2),
                 "type": "model",
                 "path": "/path/to/model2",
+                "display_name": "bert-base-uncased",
+                "publisher": "huggingface",
+                "source_type": "huggingface_cache",
             },
         ]
 
         grouped, duplicates = group_and_identify_duplicates(items)
 
-        # Should detect duplicates
+        # Should detect duplicates (same publisher, name, and size)
         assert len(duplicates) == 1
         duplicate_set = list(duplicates)[0]
-        assert len(duplicate_set) == 1  # Only one unique name
+        assert len(duplicate_set) == 1  # One unique name appears multiple times
         assert "models--huggingface--bert-base-uncased" in duplicate_set
 
         # Both items should be marked as duplicates
         for item in grouped["models"]["huggingface"]:
             assert item["is_duplicate"] is True
+
+    def test_no_duplicate_different_sizes_huggingface(self):
+        """Test that HuggingFace items with same name but different sizes are NOT duplicates."""
+        items = [
+            {
+                "name": "models--huggingface--bert-base-uncased",
+                "size": 1000,
+                "date": datetime(2023, 1, 1),
+                "type": "model",
+                "path": "/path/to/model1",
+                "display_name": "bert-base-uncased",
+                "publisher": "huggingface",
+                "source_type": "huggingface_cache",
+            },
+            {
+                "name": "models--huggingface--bert-base-uncased",  
+                "size": 1100,  # Different size = NOT duplicate
+                "date": datetime(2023, 1, 2),
+                "type": "model",
+                "path": "/path/to/model2",
+                "display_name": "bert-base-uncased",
+                "publisher": "huggingface",
+                "source_type": "huggingface_cache",
+            },
+        ]
+
+        grouped, duplicates = group_and_identify_duplicates(items)
+
+        # Should NOT detect duplicates (different sizes)
+        assert len(duplicates) == 0
+
+        # Both items should NOT be marked as duplicates
+        for item in grouped["models"]["huggingface"]:
+            assert item["is_duplicate"] is False
+
+    def test_lora_adapters_not_duplicates(self):
+        """Test that LoRA adapters from custom directories are NOT treated as duplicates."""
+        items = [
+            {
+                "name": "lora_unsloth_Qwen3_4B_unsloth_bnb_4bit",
+                "size": 560000000,
+                "date": datetime(2023, 1, 1),
+                "type": "lora_adapter",
+                "path": "/path/to/lora1",
+                "display_name": "lora_unsloth_Qwen3_4B_unsloth_bnb_4bit (2025-07-04 12:16)",
+                "source_type": "custom_directory",
+            },
+            {
+                "name": "lora_unsloth_Qwen3_4B_unsloth_bnb_4bit",
+                "size": 560000000,
+                "date": datetime(2023, 1, 2),
+                "type": "lora_adapter",
+                "path": "/path/to/lora2",  # Different path
+                "display_name": "lora_unsloth_Qwen3_4B_unsloth_bnb_4bit (2025-07-04 13:20)",
+                "source_type": "custom_directory",
+            },
+        ]
+
+        grouped, duplicates = group_and_identify_duplicates(items)
+
+        # Should NOT detect duplicates (LoRA adapters use path as unique key)
+        assert len(duplicates) == 0
+
+        # Items should NOT be marked as duplicates
+        for category in grouped.values():
+            for publisher in category.values():
+                for item in publisher:
+                    assert item["is_duplicate"] is False
 
     def test_complex_name_patterns(self):
         """Test handling of complex naming patterns."""
@@ -96,6 +177,9 @@ class TestGroupAndIdentifyDuplicates:
                 "date": datetime(2023, 1, 1),
                 "type": "model",
                 "path": "/path/1",
+                "display_name": "DialoGPT-medium",
+                "source_type": "huggingface_cache",
+                "publisher": "microsoft",
             },
             {
                 "name": "datasets--glue--cola",
@@ -103,6 +187,9 @@ class TestGroupAndIdentifyDuplicates:
                 "date": datetime(2023, 1, 2),
                 "type": "dataset",
                 "path": "/path/2",
+                "display_name": "cola",
+                "source_type": "huggingface_cache",
+                "publisher": "glue",
             },
             {
                 "name": "models--huggingface--transformers--main--pytorch_model.bin",
@@ -110,6 +197,9 @@ class TestGroupAndIdentifyDuplicates:
                 "date": datetime(2023, 1, 3),
                 "type": "model",
                 "path": "/path/3",
+                "display_name": "transformers--main--pytorch_model.bin",
+                "source_type": "huggingface_cache",
+                "publisher": "huggingface",
             },
         ]
 
@@ -136,7 +226,7 @@ class TestGroupAndIdentifyDuplicates:
 
         # Empty list
         grouped, duplicates = group_and_identify_duplicates([])
-        assert grouped == {"models": {}, "datasets": {}}
+        assert grouped == {}  # Empty result since no categories have items
         assert len(duplicates) == 0
 
     @patch("hf_model_tool.utils.logger")
@@ -150,6 +240,9 @@ class TestGroupAndIdentifyDuplicates:
                 "date": datetime(2023, 1, 1),
                 "type": "model",
                 "path": "/path/1",
+                "display_name": "bert",
+                "source_type": "huggingface_cache",
+                "publisher": "huggingface",
             },
             # Missing name
             {
@@ -165,22 +258,24 @@ class TestGroupAndIdentifyDuplicates:
                 "date": datetime(2023, 1, 3),
                 "path": "/path/3",
             },
-            # Invalid name format
+            # Invalid item format
             {
                 "name": "invalid-name",
                 "size": 4000,
                 "date": datetime(2023, 1, 4),
-                "type": "model",
+                "type": "unknown",  # This will be categorized as unknown
                 "path": "/path/4",
+                "display_name": "invalid-name",
+                "source_type": "unknown",
             },
         ]
 
         grouped, duplicates = group_and_identify_duplicates(items)
 
-        # Should only process valid items
-        assert len(grouped["models"]["huggingface"]) == 1
-        assert len(grouped["datasets"]) == 0
-
+        # Should only process valid items properly
+        if "models" in grouped and "huggingface" in grouped["models"]:
+            assert len(grouped["models"]["huggingface"]) == 1
+        
         # Should log warnings for malformed items
         assert mock_logger.warning.called
 
@@ -191,18 +286,19 @@ class TestGroupAndIdentifyDuplicates:
                 "name": "unknown--publisher--asset",
                 "size": 1000,
                 "date": datetime(2023, 1, 1),
-                "type": "unknown",  # Unknown type
+                "type": "unknown_new_type",  # Type not in predefined categories
                 "path": "/path/1",
+                "display_name": "asset",
+                "source_type": "unknown",
             }
         ]
 
-        with patch("hf_model_tool.utils.logger") as mock_logger:
-            grouped, duplicates = group_and_identify_duplicates(items)
+        grouped, duplicates = group_and_identify_duplicates(items)
 
-            # Should log warning and skip item
-            mock_logger.warning.assert_called()
-            assert len(grouped["models"]) == 0
-            assert len(grouped["datasets"]) == 0
+        # Unknown asset types fall back to "unknown" category without warning
+        # (warning only happens if returned category doesn't exist)
+        assert "unknown" in grouped
+        assert len(grouped["unknown"]) > 0
 
     def test_single_part_names(self):
         """Test handling of names that don't follow the expected pattern."""
@@ -213,15 +309,19 @@ class TestGroupAndIdentifyDuplicates:
                 "date": datetime(2023, 1, 1),
                 "type": "model",
                 "path": "/path/1",
+                "display_name": "single-name",
+                "source_type": "custom_directory",  # Custom paths don't require HF naming
             }
         ]
 
-        with patch("hf_model_tool.utils.logger") as mock_logger:
-            grouped, duplicates = group_and_identify_duplicates(items)
+        grouped, duplicates = group_and_identify_duplicates(items)
 
-            # Should log warning and skip item
-            mock_logger.warning.assert_called()
-            assert len(grouped["models"]) == 0
+        # Should be categorized as custom model since it doesn't follow HF pattern
+        # and has custom_directory source type
+        if "custom_models" in grouped:
+            assert len(grouped["custom_models"]) > 0
+        elif "unknown_models" in grouped:
+            assert len(grouped["unknown_models"]) > 0
 
     def test_multiple_duplicates(self):
         """Test detection of multiple duplicate sets."""

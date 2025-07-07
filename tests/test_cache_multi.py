@@ -2,6 +2,7 @@
 """
 Test suite for multi-directory cache scanning functionality.
 """
+import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -9,6 +10,7 @@ from unittest.mock import Mock, patch
 from hf_model_tool.cache import scan_all_directories
 
 
+@pytest.mark.integration
 class TestMultiDirectoryScanning:
     """Test scanning across multiple directories."""
 
@@ -32,9 +34,11 @@ class TestMultiDirectoryScanning:
     def test_scan_single_directory(self, mock_config_class):
         """Test scanning with a single configured directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Setup mock config
+            # Setup mock config - return list of dictionaries as expected
             mock_config = Mock()
-            mock_config.get_all_directories.return_value = [temp_dir]
+            mock_config.get_all_directories_with_types.return_value = [
+                {"path": temp_dir, "type": "huggingface", "source": "test"}
+            ]
             mock_config_class.return_value = mock_config
 
             # Create test assets
@@ -59,7 +63,10 @@ class TestMultiDirectoryScanning:
 
             # Setup mock config
             mock_config = Mock()
-            mock_config.get_all_directories.return_value = [str(dir1), str(dir2)]
+            mock_config.get_all_directories_with_types.return_value = [
+                {"path": str(dir1), "type": "huggingface", "source": "test1"},
+                {"path": str(dir2), "type": "huggingface", "source": "test2"}
+            ]
             mock_config_class.return_value = mock_config
 
             # Create assets in different directories
@@ -92,7 +99,10 @@ class TestMultiDirectoryScanning:
 
             # Setup mock config
             mock_config = Mock()
-            mock_config.get_all_directories.return_value = [str(dir1), str(dir2)]
+            mock_config.get_all_directories_with_types.return_value = [
+                {"path": str(dir1), "type": "huggingface", "source": "test1"},
+                {"path": str(dir2), "type": "huggingface", "source": "test2"}
+            ]
             mock_config_class.return_value = mock_config
 
             # Create same asset in both directories
@@ -116,9 +126,9 @@ class TestMultiDirectoryScanning:
 
             # Setup mock config with one existing and one missing directory
             mock_config = Mock()
-            mock_config.get_all_directories.return_value = [
-                str(existing_dir),
-                "/nonexistent/directory",
+            mock_config.get_all_directories_with_types.return_value = [
+                {"path": str(existing_dir), "type": "huggingface", "source": "test1"},
+                {"path": "/nonexistent/directory", "type": "huggingface", "source": "test2"}
             ]
             mock_config_class.return_value = mock_config
 
@@ -137,7 +147,9 @@ class TestMultiDirectoryScanning:
         with tempfile.TemporaryDirectory() as temp_dir:
             # Setup mock config
             mock_config = Mock()
-            mock_config.get_all_directories.return_value = [temp_dir]
+            mock_config.get_all_directories_with_types.return_value = [
+                {"path": temp_dir, "type": "huggingface", "source": "test"}
+            ]
             mock_config_class.return_value = mock_config
 
             # Scan empty directory
@@ -150,7 +162,7 @@ class TestMultiDirectoryScanning:
         """Test scanning with no configured directories."""
         # Setup mock config with no directories
         mock_config = Mock()
-        mock_config.get_all_directories.return_value = []
+        mock_config.get_all_directories_with_types.return_value = []
         mock_config_class.return_value = mock_config
 
         # Scan
@@ -165,7 +177,9 @@ class TestMultiDirectoryScanning:
         with tempfile.TemporaryDirectory() as temp_dir:
             # Setup mock config
             mock_config = Mock()
-            mock_config.get_all_directories.return_value = [temp_dir]
+            mock_config.get_all_directories_with_types.return_value = [
+                {"path": temp_dir, "type": "huggingface", "source": "test"}
+            ]
             mock_config_class.return_value = mock_config
 
             # Create test asset
@@ -177,5 +191,5 @@ class TestMultiDirectoryScanning:
             # Check logging calls
             mock_logger.info.assert_any_call("Scanning 1 directories for assets")
             mock_logger.info.assert_any_call(
-                "Found 1 unique assets across all directories"
+                "Found 1 assets across all directories"
             )

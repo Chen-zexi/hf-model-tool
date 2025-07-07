@@ -12,6 +12,7 @@ import pytest
 from hf_model_tool.config import ConfigManager
 
 
+@pytest.mark.integration
 class TestConfigManager:
     """Test ConfigManager functionality."""
 
@@ -62,19 +63,47 @@ class TestConfigManager:
             test_dir = Path(temp_dir) / "test_assets"
             test_dir.mkdir()
 
-            # Add directory
+            # Add directory with default path type
             result = manager.add_directory(str(test_dir))
             assert result is True
 
-            # Verify it was added
+            # Verify it was added with new dict format
             config = manager.load_config()
-            # Compare resolved paths to handle macOS symlinks
-            resolved_dirs = [Path(d).resolve() for d in config["custom_directories"]]
-            assert test_dir.resolve() in resolved_dirs
+            custom_dirs = config["custom_directories"]
+            assert len(custom_dirs) == 1
+            
+            dir_entry = custom_dirs[0]
+            assert isinstance(dir_entry, dict)
+            assert "path" in dir_entry
+            assert "type" in dir_entry
+            assert "added_date" in dir_entry
+            assert Path(dir_entry["path"]).resolve() == test_dir.resolve()
+            assert dir_entry["type"] == "auto"  # default type
 
             # Try adding again - should return False
             result = manager.add_directory(str(test_dir))
             assert result is False
+
+    def test_add_directory_with_type(self):
+        """Test adding a directory with specific path type."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ConfigManager(Path(temp_dir))
+
+            # Create a test directory
+            test_dir = Path(temp_dir) / "test_assets"
+            test_dir.mkdir()
+
+            # Add directory with custom path type
+            result = manager.add_directory(str(test_dir), "custom_directory")
+            assert result is True
+
+            # Verify it was added with correct type
+            config = manager.load_config()
+            custom_dirs = config["custom_directories"]
+            assert len(custom_dirs) == 1
+            
+            dir_entry = custom_dirs[0]
+            assert dir_entry["type"] == "custom_directory"
 
     def test_add_nonexistent_directory(self):
         """Test adding a non-existent directory raises error."""
@@ -114,16 +143,41 @@ class TestConfigManager:
             result = manager.remove_directory(str(test_dir1))
             assert result is True
 
-            # Verify removal
+            # Verify removal with new dict format
             config = manager.load_config()
-            # Compare resolved paths to handle macOS symlinks
-            resolved_dirs = [Path(d).resolve() for d in config["custom_directories"]]
-            assert test_dir1.resolve() not in resolved_dirs
-            assert test_dir2.resolve() in resolved_dirs
+            custom_dirs = config["custom_directories"]
+            assert len(custom_dirs) == 1
+            
+            # Check that only test_dir2 remains
+            remaining_dir = custom_dirs[0]
+            assert Path(remaining_dir["path"]).resolve() == test_dir2.resolve()
 
             # Try removing non-existent - should return False
             result = manager.remove_directory("/nonexistent/path")
             assert result is False
+
+    def test_legacy_string_format_removal(self):
+        """Test removing directories from legacy string format."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ConfigManager(Path(temp_dir))
+
+            # Create a config with legacy string format
+            test_dir = Path(temp_dir) / "legacy_test"
+            test_dir.mkdir()
+            
+            config = {
+                "custom_directories": [str(test_dir)],  # Legacy string format
+                "include_default_cache": True
+            }
+            manager.save_config(config)
+
+            # Should be able to remove legacy format directory
+            result = manager.remove_directory(str(test_dir))
+            assert result is True
+
+            # Verify removal
+            config = manager.load_config()
+            assert len(config["custom_directories"]) == 0
 
     def test_get_all_directories(self):
         """Test getting all directories including defaults."""

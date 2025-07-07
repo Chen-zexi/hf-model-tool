@@ -1,4 +1,4 @@
-.PHONY: help install test test-simple test-cov lint format type-check clean build publish dev-install qa qa-relaxed qa-simple
+.PHONY: help install test test-simple test-cov test-unit test-integration lint format type-check clean build publish dev-install qa qa-relaxed qa-simple
 
 help:  ## Show this help message
 	@echo "HF-MODEL-TOOL Development Commands"
@@ -20,6 +20,18 @@ test:  ## Run tests with coverage (requires pytest-cov)
 
 test-cov:  ## Run tests with coverage reporting
 	pytest tests/ -v --cov=hf_model_tool --cov-report=term-missing --cov-report=xml
+
+test-unit:  ## Run only unit tests (fast)
+	pytest -m unit --tb=short
+
+test-integration:  ## Run only integration tests
+	pytest -m integration --tb=short
+
+test-ci:  ## Run tests in CI order (unit first, then integration)
+	@echo "Running unit tests..."
+	@pytest -m unit --tb=short
+	@echo "Running integration tests..."
+	@pytest -m integration --tb=short
 
 lint:  ## Run linting (flake8)
 	flake8 hf_model_tool/ tests/
