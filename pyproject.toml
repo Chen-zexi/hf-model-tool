@@ -5,17 +5,29 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hf-model-tool"
-version = "0.2.0"
+version = "0.2.1"
 authors = [
     { name="Zexi Chen", email="zzxxi.chen@gmail.com" },
 ]
-description = "A tool to manage Hugging Face models."
+description = "A CLI tool to manage Hugging Face models."
 readme = "README.md"
 requires-python = ">=3.7"
+license = {text = "MIT"}
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Archiving",
+    "Topic :: Utilities",
 ]
 dependencies = [
     "rich",
@@ -54,6 +66,9 @@ hf-model-tool = "hf_model_tool.__main__:main"
 [project.urls]
 "Homepage" = "https://github.com/Chen-zexi/hf-model-tool"
 "Bug Tracker" = "https://github.com/Chen-zexi/hf-model-tool/issues"
+
+[tool.setuptools]
+packages = ["hf_model_tool"]
 
 # Tool configurations
 [tool.black]
