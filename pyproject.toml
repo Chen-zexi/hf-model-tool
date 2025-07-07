@@ -21,6 +21,7 @@ dependencies = [
     "rich",
     "inquirer", 
     "html2text",
+    "importlib-metadata>=1.0; python_version<'3.8'",
 ]
 
 [project.optional-dependencies]

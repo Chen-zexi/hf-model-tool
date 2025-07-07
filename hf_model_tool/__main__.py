@@ -15,6 +15,7 @@ from rich.text import Text
 from rich.align import Align
 from rich.columns import Columns
 
+from . import __version__
 from .cache import scan_all_directories
 from .ui import (
     print_items,
@@ -65,7 +66,7 @@ def show_welcome_screen() -> None:
             style="bold yellow",
             justify="center",
         )
-        version_text = Text("v0.1.0", style="dim white", justify="center")
+        version_text = Text(f"v{__version__}", style="dim white", justify="center")
         tagline = Text(
             "Organize • Clean • Optimize Your Local AI Assets",
             style="italic green",
