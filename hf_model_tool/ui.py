@@ -221,7 +221,15 @@ def delete_assets_workflow(items: List[Dict[str, Any]]) -> Optional[str]:
                 )
                 if confirm:
                     for choice_str in answers["selected_items"]:
-                        item_name_to_find = choice_str.split(" ")[0]
+                        # Extract display name by removing the size info in parentheses at the end
+                        # Format: "display_name (size GB)" -> "display_name"
+                        if " (" in choice_str and choice_str.endswith(" GB)"):
+                            # Remove the last parentheses group (size info)
+                            item_name_to_find = choice_str.rsplit(" (", 1)[0]
+                        else:
+                            # Fallback: use the full string for exact matching
+                            item_name_to_find = choice_str
+                            
                         for item in items_to_delete_choices:
                             if item["display_name"] == item_name_to_find:
                                 shutil.rmtree(item["path"])
@@ -260,7 +268,9 @@ def deduplicate_assets_workflow(items: List[Dict[str, Any]]) -> Optional[str]:
         elif keep_choice == "MAIN_MENU":
             return "MAIN_MENU"
 
-        item_to_keep_name = keep_choice.split(" ")[0]
+        # Extract item name by removing the date and size info in parentheses at the end  
+        # Format: "name (date, size GB)" -> "name"
+        item_to_keep_name = keep_choice.split(" (")[0]
         items_to_delete = [
             item for item in dup_items if item["name"] != item_to_keep_name
         ]

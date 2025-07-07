@@ -8,7 +8,7 @@ and help system across all application workflows.
 import sys
 import os
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 import inquirer
 from rich.console import Console
@@ -250,7 +250,7 @@ def add_current_directory(config_manager: ConfigManager) -> None:
         input("Press Enter to continue...")
 
 
-def remove_directory(config_manager: ConfigManager, custom_dirs: List[str]) -> None:
+def remove_directory(config_manager: ConfigManager, custom_dirs: List[Dict]) -> None:
     """Remove a directory from configuration."""
     console = Console()
 
@@ -260,8 +260,17 @@ def remove_directory(config_manager: ConfigManager, custom_dirs: List[str]) -> N
         return
 
     try:
-        # Create choices with directory paths
-        choices = [f"{i}. {dir_path}" for i, dir_path in enumerate(custom_dirs, 1)]
+        # Create choices with directory paths and types
+        choices = []
+        for i, dir_entry in enumerate(custom_dirs, 1):
+            # Handle both old (string) and new (dict) formats
+            if isinstance(dir_entry, str):
+                choices.append(f"{i}. {dir_entry}")
+            else:
+                path = dir_entry.get("path", "Unknown")
+                dir_type = dir_entry.get("type", "unknown")
+                choices.append(f"{i}. {path} [{dir_type}]")
+        
         choices.append("Cancel")
 
         choice = unified_prompt(
@@ -273,7 +282,13 @@ def remove_directory(config_manager: ConfigManager, custom_dirs: List[str]) -> N
 
         # Extract index from choice
         idx = int(choice.split(".")[0]) - 1
-        dir_to_remove = custom_dirs[idx]
+        dir_entry = custom_dirs[idx]
+        
+        # Get path from entry (handle both old and new formats)
+        if isinstance(dir_entry, str):
+            dir_to_remove = dir_entry
+        else:
+            dir_to_remove = dir_entry.get("path", "")
 
         if config_manager.remove_directory(dir_to_remove):
             console.print(f"\n[green]Removed directory: {dir_to_remove}[/green]")

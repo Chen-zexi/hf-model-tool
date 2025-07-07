@@ -6,7 +6,8 @@ A CLI tool for managing locally downloaded HuggingFace models and datasets
 """
 import sys
 import logging
-from typing import NoReturn
+import argparse
+from typing import NoReturn, Optional
 from pathlib import Path
 
 from rich.console import Console
@@ -24,6 +25,7 @@ from .ui import (
     view_asset_details_workflow,
 )
 from .navigation import unified_prompt
+from .config import ConfigManager
 
 # Configure logging - only to file, not console
 logging.basicConfig(
@@ -35,6 +37,181 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger(__name__)
+
+
+def create_parser() -> argparse.ArgumentParser:
+    """Create and configure the argument parser."""
+    parser = argparse.ArgumentParser(
+        prog="hf-model-tool",
+        description="HuggingFace Model Management Tool - Organize, clean, and optimize your local AI assets",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  hf-model-tool                    # Interactive mode
+  hf-model-tool -l                 # List all assets
+  hf-model-tool -m                 # Manage assets
+  hf-model-tool -v                 # View asset details
+  hf-model-tool -path /path/to/dir # Add directory to scan
+  hf-model-tool -l --sort name     # List assets sorted by name
+        """,
+    )
+    
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"hf-model-tool {__version__}",
+    )
+    
+    parser.add_argument(
+        "-l", "--list",
+        action="store_true",
+        help="List all assets with sizes",
+    )
+    
+    parser.add_argument(
+        "-m", "--manage",
+        action="store_true",
+        help="Enter asset management mode",
+    )
+    
+    parser.add_argument(
+        "-v", "--view", "--details",
+        action="store_true",
+        dest="details",
+        help="View asset details",
+    )
+    
+    parser.add_argument(
+        "-path", "--add-path",
+        type=str,
+        metavar="PATH",
+        help="Add a directory path to scan for assets",
+    )
+    
+    parser.add_argument(
+        "--sort",
+        choices=["size", "name", "date"],
+        default="size",
+        help="Sort assets by size, name, or date (default: size)",
+    )
+    
+    return parser
+
+
+def handle_cli_list(sort_by: str = "size") -> None:
+    """Handle the -l/--list CLI option."""
+    console = Console()
+    try:
+        items = scan_all_directories()
+        if not items:
+            console.print("[yellow]No HuggingFace assets found![/yellow]")
+            console.print("Use -path to add directories to scan.")
+            return
+        
+        print_items(items, sort_by=sort_by)
+    except Exception as e:
+        console.print(f"[red]Error listing assets: {e}[/red]")
+        logger.error(f"Error in CLI list: {e}")
+
+
+def handle_cli_manage() -> None:
+    """Handle the -m/--manage CLI option."""
+    console = Console()
+    try:
+        items = scan_all_directories()
+        if not items:
+            console.print("[yellow]No HuggingFace assets found![/yellow]")
+            console.print("Use -path to add directories to scan.")
+            return
+        
+        while True:
+            manage_choice = unified_prompt(
+                "manage_action",
+                "Asset Management Options",
+                ["Delete Assets...", "Deduplicate Assets"],
+                allow_back=True,
+            )
+            if not manage_choice or manage_choice == "BACK":
+                break
+            elif manage_choice == "MAIN_MENU":
+                break
+            
+            if manage_choice == "Delete Assets...":
+                delete_assets_workflow(items)
+                break
+            elif manage_choice == "Deduplicate Assets":
+                deduplicate_assets_workflow(items)
+                break
+                
+    except Exception as e:
+        console.print(f"[red]Error in manage mode: {e}[/red]")
+        logger.error(f"Error in CLI manage: {e}")
+
+
+def handle_cli_details() -> None:
+    """Handle the -d/--details CLI option."""
+    console = Console()
+    try:
+        items = scan_all_directories()
+        if not items:
+            console.print("[yellow]No HuggingFace assets found![/yellow]")
+            console.print("Use -path to add directories to scan.")
+            return
+        
+        view_asset_details_workflow(items)
+    except Exception as e:
+        console.print(f"[red]Error viewing asset details: {e}[/red]")
+        logger.error(f"Error in CLI details: {e}")
+
+
+def handle_cli_add_path(path: str) -> None:
+    """Handle the -path/--add-path CLI option."""
+    console = Console()
+    try:
+        # Expand user path
+        expanded_path = Path(path).expanduser().resolve()
+        
+        # Check if path exists
+        if not expanded_path.exists():
+            console.print(f"[red]Error: Path '{path}' does not exist[/red]")
+            return
+        
+        if not expanded_path.is_dir():
+            console.print(f"[red]Error: Path '{path}' is not a directory[/red]")
+            return
+        
+        # Ask user for path type
+        console.print(f"\n[bold]Adding directory:[/bold] {expanded_path}")
+        console.print("\n[bold]Select Directory Type:[/bold]")
+        console.print("[cyan]1. HuggingFace Cache[/cyan] - Standard HF cache with models--publisher--name structure")
+        console.print("[cyan]2. Custom Directory[/cyan] - LoRA adapters, fine-tuned models, or other custom formats")
+        console.print("[cyan]3. Auto-detect[/cyan] - Let the tool determine the type automatically")
+        
+        while True:
+            choice = input("\nEnter choice (1-3): ").strip()
+            if choice == "1":
+                path_type = "huggingface_cache"
+                break
+            elif choice == "2":
+                path_type = "custom_directory"
+                break
+            elif choice == "3":
+                path_type = "auto"
+                break
+            else:
+                console.print("[red]Invalid choice. Please enter 1, 2, or 3.[/red]")
+        
+        # Add the directory
+        config = ConfigManager()
+        if config.add_directory(str(expanded_path), path_type):
+            console.print(f"[green]✓ Successfully added directory: {expanded_path}[/green]")
+            console.print(f"[green]  Path type: {path_type}[/green]")
+        else:
+            console.print(f"[yellow]Directory already exists in configuration[/yellow]")
+            
+    except Exception as e:
+        console.print(f"[red]Error adding path: {e}[/red]")
+        logger.error(f"Error in CLI add path: {e}")
 
 
 def show_welcome_screen() -> None:
@@ -200,6 +377,28 @@ def main() -> NoReturn:
     logger.info("Starting HF-MODEL-TOOL application")
 
     try:
+        # Parse command line arguments
+        parser = create_parser()
+        args = parser.parse_args()
+        
+        # Handle CLI arguments (non-interactive mode)
+        if args.list:
+            handle_cli_list(args.sort)
+            return
+        
+        if args.manage:
+            handle_cli_manage()
+            return
+        
+        if args.details:
+            handle_cli_details()
+            return
+        
+        if args.add_path:
+            handle_cli_add_path(args.add_path)
+            return
+        
+        # If no CLI arguments, run interactive mode
         # Show welcome screen on first run
         show_welcome_screen()
 

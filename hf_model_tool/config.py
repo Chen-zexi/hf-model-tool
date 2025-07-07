@@ -178,7 +178,8 @@ class ConfigManager:
                     found_index = i
                     break
             elif isinstance(entry, dict):
-                if entry.get("path") == directory_path:
+                entry_path = entry.get("path", "")
+                if entry_path == directory_path or entry_path == directory:
                     found_index = i
                     break
                     
