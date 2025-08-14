@@ -57,45 +57,49 @@ Examples:
         """,
     )
     parser.add_argument(
-        "-l", "--list",
+        "-l",
+        "--list",
         action="store_true",
         help="List all assets with sizes",
     )
-    
+
     parser.add_argument(
-        "-m", "--manage",
+        "-m",
+        "--manage",
         action="store_true",
         help="Enter asset management mode",
     )
-    
+
     parser.add_argument(
-        "-v", "--view", "--details",
+        "-v",
+        "--view",
+        "--details",
         action="store_true",
         dest="details",
         help="View asset details",
     )
-    
-    
+
     parser.add_argument(
-        "-path", "--add-path",
+        "-path",
+        "--add-path",
         type=str,
         metavar="PATH",
         help="Add a directory containing AI assets (HuggingFace cache, LoRA adapters, custom models, etc.)",
     )
-    
+
     parser.add_argument(
         "--sort",
         choices=["size", "name", "date"],
         default="size",
         help="Sort assets by size, name, or date (default: size)",
     )
-    
+
     parser.add_argument(
         "--version",
         action="version",
         version=f"hf-model-tool {__version__}",
     )
-    
+
     return parser
 
 
@@ -108,7 +112,7 @@ def handle_cli_list(sort_by: str = "size") -> None:
             console.print("[yellow]No HuggingFace assets found![/yellow]")
             console.print("Use -path to add directories to scan.")
             return
-        
+
         print_items(items, sort_by=sort_by)
     except Exception as e:
         console.print(f"[red]Error listing assets: {e}[/red]")
@@ -124,7 +128,7 @@ def handle_cli_manage() -> None:
             console.print("[yellow]No HuggingFace assets found![/yellow]")
             console.print("Use -path to add directories to scan.")
             return
-        
+
         while True:
             manage_choice = unified_prompt(
                 "manage_action",
@@ -136,14 +140,14 @@ def handle_cli_manage() -> None:
                 break
             elif manage_choice == "MAIN_MENU":
                 break
-            
+
             if manage_choice == "Delete Assets...":
                 delete_assets_workflow(items)
                 break
             elif manage_choice == "Deduplicate Assets":
                 deduplicate_assets_workflow(items)
                 break
-                
+
     except Exception as e:
         console.print(f"[red]Error in manage mode: {e}[/red]")
         logger.error(f"Error in CLI manage: {e}")
@@ -158,7 +162,7 @@ def handle_cli_details() -> None:
             console.print("[yellow]No HuggingFace assets found![/yellow]")
             console.print("Use -path to add directories to scan.")
             return
-        
+
         view_asset_details_workflow(items)
     except Exception as e:
         console.print(f"[red]Error viewing asset details: {e}[/red]")
@@ -171,23 +175,29 @@ def handle_cli_add_path(path: str) -> None:
     try:
         # Expand user path
         expanded_path = Path(path).expanduser().resolve()
-        
+
         # Check if path exists
         if not expanded_path.exists():
             console.print(f"[red]Error: Path '{path}' does not exist[/red]")
             return
-        
+
         if not expanded_path.is_dir():
             console.print(f"[red]Error: Path '{path}' is not a directory[/red]")
             return
-        
+
         # Ask user for path type
         console.print(f"\n[bold]Adding directory:[/bold] {expanded_path}")
         console.print("\n[bold]Select Directory Type:[/bold]")
-        console.print("[cyan]1. HuggingFace Cache[/cyan] - Standard HF cache with models--publisher--name structure")
-        console.print("[cyan]2. Custom Directory[/cyan] - LoRA adapters, fine-tuned models, or other custom formats")
-        console.print("[cyan]3. Auto-detect[/cyan] - Let the tool determine the type automatically")
-        
+        console.print(
+            "[cyan]1. HuggingFace Cache[/cyan] - Standard HF cache with models--publisher--name structure"
+        )
+        console.print(
+            "[cyan]2. Custom Directory[/cyan] - LoRA adapters, fine-tuned models, or other custom formats"
+        )
+        console.print(
+            "[cyan]3. Auto-detect[/cyan] - Let the tool determine the type automatically"
+        )
+
         while True:
             choice = input("\nEnter choice (1-3): ").strip()
             if choice == "1":
@@ -201,15 +211,17 @@ def handle_cli_add_path(path: str) -> None:
                 break
             else:
                 console.print("[red]Invalid choice. Please enter 1, 2, or 3.[/red]")
-        
+
         # Add the directory
         config = ConfigManager()
         if config.add_directory(str(expanded_path), path_type):
-            console.print(f"[green]✓ Successfully added directory: {expanded_path}[/green]")
+            console.print(
+                f"[green]✓ Successfully added directory: {expanded_path}[/green]"
+            )
             console.print(f"[green]  Path type: {path_type}[/green]")
         else:
             console.print(f"[yellow]Directory already exists in configuration[/yellow]")
-            
+
     except Exception as e:
         console.print(f"[red]Error adding path: {e}[/red]")
         logger.error(f"Error in CLI add path: {e}")
@@ -291,11 +303,14 @@ def show_welcome_screen() -> None:
         features.append(" - LLM, LoRA Adapters, and Datasets\n", style="dim white")
         features.append("  • ", style="cyan")
         features.append("Asset Management", style="white")
-        features.append(" - List, view details, and clean duplicates\n", style="dim white")
+        features.append(
+            " - List, view details, and clean duplicates\n", style="dim white"
+        )
         features.append("  • ", style="cyan")
         features.append("Multi-Directory Support", style="white")
-        features.append(" - Scan HuggingFace cache and custom directories\n", style="dim white")
-
+        features.append(
+            " - Scan HuggingFace cache and custom directories\n", style="dim white"
+        )
 
         # Quick help
         help_text = Text()
@@ -308,7 +323,9 @@ def show_welcome_screen() -> None:
         help_text.append("' and '", style="dim white")
         help_text.append("→ Config", style="cyan")
         help_text.append("' for navigation\n", style="dim white")
-        help_text.append("  Add directories via Config > Manage Directories\n", style="dim white")
+        help_text.append(
+            "  Add directories via Config > Manage Directories\n", style="dim white"
+        )
 
         # Display the welcome screen with centered logo
         centered_logo = Align.center(logo_text)
@@ -378,24 +395,24 @@ def main() -> NoReturn:
         # Parse command line arguments
         parser = create_parser()
         args = parser.parse_args()
-        
+
         # Handle CLI arguments (non-interactive mode)
         if args.list:
             handle_cli_list(args.sort)
             return
-        
+
         if args.manage:
             handle_cli_manage()
             return
-        
+
         if args.details:
             handle_cli_details()
             return
-        
+
         if args.add_path:
             handle_cli_add_path(args.add_path)
             return
-        
+
         # If no CLI arguments, run interactive mode
         # Show welcome screen on first run
         show_welcome_screen()

@@ -57,13 +57,17 @@ def manage_directories() -> None:
                         dir_path = dir_entry
                         dir_type = "legacy"
                         exists = "✅" if Path(dir_path).exists() else "❌"
-                        console.print(f"  {i}. {exists} [dim]({dir_type})[/dim] {dir_path}")
+                        console.print(
+                            f"  {i}. {exists} [dim]({dir_type})[/dim] {dir_path}"
+                        )
                     elif isinstance(dir_entry, dict):
                         # New format with type
                         dir_path = dir_entry.get("path", "unknown")
                         dir_type = dir_entry.get("type", "custom")
                         exists = "✅" if Path(dir_path).exists() else "❌"
-                        console.print(f"  {i}. {exists} [cyan]({dir_type})[/cyan] {dir_path}")
+                        console.print(
+                            f"  {i}. {exists} [cyan]({dir_type})[/cyan] {dir_path}"
+                        )
             else:
                 console.print("\n[dim]No custom directories configured[/dim]")
 
@@ -109,9 +113,7 @@ def add_directory_path(config_manager: ConfigManager) -> None:
 
     try:
         console.print("\n[bold]Add Directory Path[/bold]")
-        console.print(
-            "Enter the full path to a directory containing ML assets:"
-        )
+        console.print("Enter the full path to a directory containing ML assets:")
         console.print("[dim]Example: /home/user/my-models[/dim]\n")
 
         # Get path from user
@@ -137,29 +139,31 @@ def add_directory_path(config_manager: ConfigManager) -> None:
 
         # Ask user to choose path type
         console.print("\n[bold]Select Directory Type:[/bold]")
-        console.print("[cyan]HuggingFace Cache:[/cyan] Standard HF cache with models--publisher--name structure")
-        console.print("[cyan]Custom Directory:[/cyan] LoRA adapters, fine-tuned models, or other custom formats")
-        console.print("[cyan]Auto-detect:[/cyan] Let the tool determine the type automatically")
-        
-        path_type_options = [
-            "HuggingFace Cache",
-            "Custom Directory", 
-            "Auto-detect"
-        ]
-        
+        console.print(
+            "[cyan]HuggingFace Cache:[/cyan] Standard HF cache with models--publisher--name structure"
+        )
+        console.print(
+            "[cyan]Custom Directory:[/cyan] LoRA adapters, fine-tuned models, or other custom formats"
+        )
+        console.print(
+            "[cyan]Auto-detect:[/cyan] Let the tool determine the type automatically"
+        )
+
+        path_type_options = ["HuggingFace Cache", "Custom Directory", "Auto-detect"]
+
         path_type_choice = unified_prompt(
             "path_type", "Choose Directory Type", path_type_options, allow_back=False
         )
-        
+
         if not path_type_choice:
             console.print("[yellow]Cancelled[/yellow]")
             return
-            
+
         # Map choice to internal type
         type_mapping = {
             "HuggingFace Cache": "huggingface",
             "Custom Directory": "custom",
-            "Auto-detect": "auto"
+            "Auto-detect": "auto",
         }
         path_type = type_mapping[path_type_choice]
 
@@ -198,30 +202,32 @@ def add_current_directory(config_manager: ConfigManager) -> None:
 
         # Ask user to choose path type
         console.print("\n[bold]Select Directory Type:[/bold]")
-        console.print("[cyan]HuggingFace Cache:[/cyan] Standard HF cache with models--publisher--name structure")
-        console.print("[cyan]Custom Directory:[/cyan] LoRA adapters, fine-tuned models, or other custom formats")
-        console.print("[cyan]Auto-detect:[/cyan] Let the tool determine the type automatically")
-        
-        path_type_options = [
-            "HuggingFace Cache",
-            "Custom Directory", 
-            "Auto-detect"
-        ]
-        
+        console.print(
+            "[cyan]HuggingFace Cache:[/cyan] Standard HF cache with models--publisher--name structure"
+        )
+        console.print(
+            "[cyan]Custom Directory:[/cyan] LoRA adapters, fine-tuned models, or other custom formats"
+        )
+        console.print(
+            "[cyan]Auto-detect:[/cyan] Let the tool determine the type automatically"
+        )
+
+        path_type_options = ["HuggingFace Cache", "Custom Directory", "Auto-detect"]
+
         path_type_choice = unified_prompt(
             "path_type", "Choose Directory Type", path_type_options, allow_back=False
         )
-        
+
         if not path_type_choice:
             console.print("[yellow]Cancelled[/yellow]")
             input("Press Enter to continue...")
             return
-            
+
         # Map choice to internal type
         type_mapping = {
             "HuggingFace Cache": "huggingface",
             "Custom Directory": "custom",
-            "Auto-detect": "auto"
+            "Auto-detect": "auto",
         }
         path_type = type_mapping[path_type_choice]
 
@@ -238,7 +244,9 @@ def add_current_directory(config_manager: ConfigManager) -> None:
 
         # Add directory with type
         if config_manager.add_directory(current_dir, path_type):
-            console.print(f"\n[green]Added current directory as {path_type_choice.lower()}[/green]")
+            console.print(
+                f"\n[green]Added current directory as {path_type_choice.lower()}[/green]"
+            )
         else:
             console.print(f"\n[yellow]Current directory already configured[/yellow]")
 
@@ -270,7 +278,7 @@ def remove_directory(config_manager: ConfigManager, custom_dirs: List[Dict]) -> 
                 path = dir_entry.get("path", "Unknown")
                 dir_type = dir_entry.get("type", "unknown")
                 choices.append(f"{i}. {path} [{dir_type}]")
-        
+
         choices.append("Cancel")
 
         choice = unified_prompt(
@@ -283,7 +291,7 @@ def remove_directory(config_manager: ConfigManager, custom_dirs: List[Dict]) -> 
         # Extract index from choice
         idx = int(choice.split(".")[0]) - 1
         dir_entry = custom_dirs[idx]
-        
+
         # Get path from entry (handle both old and new formats)
         if isinstance(dir_entry, str):
             dir_to_remove = dir_entry
@@ -386,7 +394,7 @@ def show_help() -> None:
         print("\n" + "=" * 70)
         print("HF-MODEL-TOOL HELP")
         print("=" * 70)
-        
+
         print("\nNAVIGATION:")
         print("  ↑/↓ arrows: Navigate menu options")
         print("  Enter: Select current option")
@@ -394,13 +402,13 @@ def show_help() -> None:
         print("  Select '→ Config' for settings and directory management")
         print("  Select 'Main Menu' to return to main menu from anywhere")
         print("  Select 'Exit' or Ctrl+C to quit")
-        
+
         print("\nSUPPORTED ASSET TYPES:")
         print("  • HuggingFace Models & Datasets (cached downloads)")
         print("  • LoRA Adapters (fine-tuned adapters from training frameworks)")
         print("  • Custom Models (fine-tuned, merged, or other custom formats)")
         print("  • Mixed Directories (automatically detects different types)")
-        
+
         print("\nDIRECTORY MANAGEMENT:")
         print("  1. Go to Config > Manage Cache Directories")
         print("  2. Choose 'Add Directory Path' or 'Add Current Directory'")
@@ -408,7 +416,7 @@ def show_help() -> None:
         print("     - HuggingFace Cache: Standard HF cache structure")
         print("     - Custom Directory: LoRA adapters and custom models")
         print("     - Auto-detect: Let the tool determine the type")
-        
+
         print("\nCOMMAND LINE USAGE:")
         print("  hf-model-tool                           # Interactive mode")
         print("  hf-model-tool -l                        # List all assets")
@@ -417,13 +425,13 @@ def show_help() -> None:
         print("  hf-model-tool -path ~/my-lora-models    # Add LoRA directory")
         print("  hf-model-tool -path /data/custom-models # Add custom directory")
         print("  hf-model-tool -l --sort name            # Sort by name")
-        
+
         print("\nKEY FEATURES:")
         print("  • Multi-directory scanning across different asset types")
         print("  • Smart duplicate detection to save disk space")
         print("  • Asset details and metadata viewing")
         print("  • Flexible sorting options (size, name, date)")
-        
+
         print("\n" + "=" * 70)
         input("\nPress Enter to continue...")
     except (KeyboardInterrupt, EOFError):

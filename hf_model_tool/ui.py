@@ -74,17 +74,17 @@ def print_items(items: List[Dict[str, Any]], sort_by: str = "size") -> None:
             category_size = sum(
                 item["size"] for pub_items in publishers.values() for item in pub_items
             )
-            
+
             # Create category-specific titles
             category_titles = {
                 "models": "HUGGINGFACE MODELS",
-                "datasets": "HUGGINGFACE DATASETS", 
+                "datasets": "HUGGINGFACE DATASETS",
                 "lora_adapters": "LORA ADAPTERS",
                 "custom_models": "CUSTOM MODELS",
                 "unknown_models": "UNKNOWN MODELS",
-                "unknown": "UNKNOWN ASSETS"
+                "unknown": "UNKNOWN ASSETS",
             }
-            
+
             display_title = category_titles.get(category, category.upper())
 
             table = Table(
@@ -123,7 +123,7 @@ def print_items(items: List[Dict[str, Any]], sort_by: str = "size") -> None:
                     type_info = item.get("subtype", "unknown")
                     duplicate_marker = " (duplicate)" if item["is_duplicate"] else ""
                     notes = f"{type_info}{duplicate_marker}"
-                    
+
                     # Add metadata info for specific asset types
                     if item.get("type") == "lora_adapter":
                         metadata = item.get("metadata", {})
@@ -132,7 +132,7 @@ def print_items(items: List[Dict[str, Any]], sort_by: str = "size") -> None:
                     elif item.get("type") == "custom_model":
                         subtype = item.get("subtype", "custom")
                         notes = f"Custom ({subtype}){duplicate_marker}"
-                    
+
                     table.add_row(
                         f"  {item['display_name']}",
                         f"{item['size'] / 1e9:.2f}",
@@ -229,7 +229,7 @@ def delete_assets_workflow(items: List[Dict[str, Any]]) -> Optional[str]:
                         else:
                             # Fallback: use the full string for exact matching
                             item_name_to_find = choice_str
-                            
+
                         for item in items_to_delete_choices:
                             if item["display_name"] == item_name_to_find:
                                 shutil.rmtree(item["path"])
@@ -268,7 +268,7 @@ def deduplicate_assets_workflow(items: List[Dict[str, Any]]) -> Optional[str]:
         elif keep_choice == "MAIN_MENU":
             return "MAIN_MENU"
 
-        # Extract item name by removing the date and size info in parentheses at the end  
+        # Extract item name by removing the date and size info in parentheses at the end
         # Format: "name (date, size GB)" -> "name"
         item_to_keep_name = keep_choice.split(" (")[0]
         items_to_delete = [
@@ -357,7 +357,7 @@ def view_asset_details_workflow(items: List[Dict[str, Any]]) -> Optional[str]:
                 else:
                     # Fallback: use the full string minus size info for exact matching
                     selected_asset_display_name = selected_asset_str
-                
+
                 selected_asset = next(
                     (
                         item
@@ -370,7 +370,7 @@ def view_asset_details_workflow(items: List[Dict[str, Any]]) -> Optional[str]:
                 if selected_asset:
                     console = Console()
                     asset_type = selected_asset["type"]
-                    
+
                     # Display asset information based on type
                     if asset_type == "lora_adapter":
                         _display_lora_details(console, selected_asset)
@@ -393,7 +393,7 @@ def _display_lora_details(console: Console, asset: Dict[str, Any]) -> None:
     """Display detailed information for LoRA adapter assets."""
     # Use the specific LoRA path if available, otherwise use the main path
     lora_path = asset.get("lora_path", asset["path"])
-    
+
     console.print(
         Panel(
             f"[bold cyan]LoRA Adapter: {asset['display_name']}[/bold cyan]\n"
@@ -402,14 +402,14 @@ def _display_lora_details(console: Console, asset: Dict[str, Any]) -> None:
             expand=False,
         )
     )
-    
+
     # Show full adapter configuration from JSON file
     adapter_config_path = Path(lora_path) / "adapter_config.json"
     if adapter_config_path.exists():
         try:
             with open(adapter_config_path, "r") as f:
                 config_data = json.load(f)
-            
+
             console.print(
                 Panel(
                     f"[bold cyan]Adapter Configuration[/bold cyan]\n"
@@ -417,7 +417,7 @@ def _display_lora_details(console: Console, asset: Dict[str, Any]) -> None:
                     expand=False,
                 )
             )
-            
+
             # Create a comprehensive table showing all configuration
             config_table = Table(
                 title="[bold green]LoRA Adapter Configuration[/bold green]",
@@ -427,7 +427,7 @@ def _display_lora_details(console: Console, asset: Dict[str, Any]) -> None:
             )
             config_table.add_column("Parameter", style="cyan", no_wrap=True, width=25)
             config_table.add_column("Value", style="magenta", width=95)
-            
+
             # Sort and display all configuration parameters
             for key, value in sorted(config_data.items()):
                 if isinstance(value, list):
@@ -449,11 +449,11 @@ def _display_lora_details(console: Console, asset: Dict[str, Any]) -> None:
                     formatted_value = "(null)"
                 else:
                     formatted_value = str(value)
-                
+
                 config_table.add_row(key, formatted_value)
-            
+
             console.print(config_table)
-            
+
         except json.JSONDecodeError as e:
             console.print(f"[red]Error parsing adapter config JSON: {e}[/red]")
         except Exception as e:
@@ -465,13 +465,13 @@ def _display_lora_details(console: Console, asset: Dict[str, Any]) -> None:
                 expand=False,
             )
         )
-    
+
     # Also show any other relevant files
     asset_path = Path(lora_path)
     relevant_files = []
     for file_pattern in ["*.safetensors", "*.bin", "*.json", "README.md"]:
         relevant_files.extend(asset_path.glob(file_pattern))
-    
+
     if relevant_files:
         files_table = Table(
             title="[bold green]Files in LoRA Adapter[/bold green]",
@@ -480,7 +480,7 @@ def _display_lora_details(console: Console, asset: Dict[str, Any]) -> None:
         )
         files_table.add_column("File", style="cyan")
         files_table.add_column("Size", style="magenta", justify="right")
-        
+
         for file_path in sorted(relevant_files):
             try:
                 size = file_path.stat().st_size
@@ -493,14 +493,14 @@ def _display_lora_details(console: Console, asset: Dict[str, Any]) -> None:
                 files_table.add_row(file_path.name, size_str)
             except OSError:
                 files_table.add_row(file_path.name, "N/A")
-        
+
         console.print(files_table)
 
 
 def _display_custom_model_details(console: Console, asset: Dict[str, Any]) -> None:
     """Display detailed information for custom model assets."""
     metadata = asset.get("metadata", {})
-    
+
     console.print(
         Panel(
             f"[bold cyan]Custom Model Details: {asset['display_name']}[/bold cyan]\n"
@@ -510,7 +510,7 @@ def _display_custom_model_details(console: Console, asset: Dict[str, Any]) -> No
             expand=False,
         )
     )
-    
+
     # Model Configuration Table
     if metadata:
         model_table = Table(
@@ -520,25 +520,29 @@ def _display_custom_model_details(console: Console, asset: Dict[str, Any]) -> No
         )
         model_table.add_column("Parameter", style="cyan", no_wrap=True)
         model_table.add_column("Value", style="magenta")
-        
+
         model_params = [
             ("Model Type", metadata.get("model_type", "unknown")),
             ("Architectures", ", ".join(metadata.get("architectures", []))),
             ("Torch Dtype", metadata.get("torch_dtype", "unknown")),
             ("Vocab Size", metadata.get("vocab_size", "unknown")),
         ]
-        
+
         # Add fine-tuning framework info if available
         if metadata.get("fine_tuning_framework"):
-            model_params.append(("Fine-tuning Framework", metadata.get("fine_tuning_framework")))
+            model_params.append(
+                ("Fine-tuning Framework", metadata.get("fine_tuning_framework"))
+            )
             if metadata.get("unsloth_version"):
-                model_params.append(("Unsloth Version", metadata.get("unsloth_version")))
-        
+                model_params.append(
+                    ("Unsloth Version", metadata.get("unsloth_version"))
+                )
+
         for param, value in model_params:
             model_table.add_row(param, str(value))
-        
+
         console.print(model_table)
-    
+
     # Show config file if available
     _display_config_file(console, asset)
 
@@ -553,7 +557,7 @@ def _display_standard_model_details(console: Console, asset: Dict[str, Any]) -> 
             expand=False,
         )
     )
-    
+
     _display_config_file(console, asset)
 
 
@@ -567,19 +571,19 @@ def _display_dataset_details(console: Console, asset: Dict[str, Any]) -> None:
             expand=False,
         )
     )
-    
+
     # Look for README.md
     readme_path = None
     for root, _, files in os.walk(asset["path"]):
         if "README.md" in files:
             readme_path = os.path.join(root, "README.md")
             break
-    
+
     if readme_path and os.path.exists(readme_path):
         try:
             with open(readme_path, "r", encoding="utf-8") as f:
                 readme_content = f.read()
-            
+
             # Check if content is already markdown or needs conversion
             if (
                 readme_content.strip().startswith("<!DOCTYPE html>")
@@ -595,7 +599,7 @@ def _display_dataset_details(console: Console, asset: Dict[str, Any]) -> None:
             else:
                 # Already markdown or plain text
                 markdown_content = readme_content
-            
+
             # Use Rich's markdown renderer within a panel
             try:
                 md = Markdown(markdown_content)
@@ -639,7 +643,7 @@ def _display_generic_details(console: Console, asset: Dict[str, Any]) -> None:
             expand=False,
         )
     )
-    
+
     # Show available files
     files = asset.get("files", [])
     if files:
@@ -649,13 +653,13 @@ def _display_generic_details(console: Console, asset: Dict[str, Any]) -> None:
             header_style="bold blue",
         )
         files_table.add_column("File", style="cyan")
-        
+
         for file in files[:20]:  # Show first 20 files
             files_table.add_row(file)
-        
+
         if len(files) > 20:
             files_table.add_row(f"... and {len(files) - 20} more files")
-        
+
         console.print(files_table)
 
 
@@ -666,22 +670,22 @@ def _display_config_file(console: Console, asset: Dict[str, Any]) -> None:
         if "config.json" in files:
             config_path = os.path.join(root, "config.json")
             break
-    
+
     if config_path and os.path.exists(config_path):
         try:
             with open(config_path, "r") as f:
                 config_data = json.load(f)
-            
+
             console.print(
                 Panel(
                     f"[bold cyan]Configuration File[/bold cyan]\n[yellow]Path:[/] {config_path}",
                     expand=False,
                 )
             )
-            
+
             # Separate quantization config if present
             quant_config = config_data.pop("quantization_config", None)
-            
+
             # Main config table
             main_config_table = Table(
                 title="[bold green]Main Configuration[/bold green]",
@@ -690,7 +694,7 @@ def _display_config_file(console: Console, asset: Dict[str, Any]) -> None:
             )
             main_config_table.add_column("Parameter", style="cyan", no_wrap=True)
             main_config_table.add_column("Value", style="magenta")
-            
+
             for key, value in sorted(config_data.items()):
                 if isinstance(value, list):
                     main_config_table.add_row(key, "\n".join(map(str, value)))
@@ -698,9 +702,9 @@ def _display_config_file(console: Console, asset: Dict[str, Any]) -> None:
                     main_config_table.add_row(key, json.dumps(value, indent=2))
                 else:
                     main_config_table.add_row(key, str(value))
-            
+
             console.print(main_config_table)
-            
+
             # Quantization config table
             if quant_config:
                 quant_table = Table(
@@ -710,7 +714,7 @@ def _display_config_file(console: Console, asset: Dict[str, Any]) -> None:
                 )
                 quant_table.add_column("Parameter", style="cyan", no_wrap=True)
                 quant_table.add_column("Value", style="magenta")
-                
+
                 for key, value in sorted(quant_config.items()):
                     if isinstance(value, list):
                         quant_table.add_row(key, "\n".join(map(str, value)))
@@ -718,9 +722,9 @@ def _display_config_file(console: Console, asset: Dict[str, Any]) -> None:
                         quant_table.add_row(key, json.dumps(value, indent=2))
                     else:
                         quant_table.add_row(key, str(value))
-                
+
                 console.print(quant_table)
-        
+
         except Exception as e:
             console.print(f"[red]Error reading config file: {e}[/red]")
     else:

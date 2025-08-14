@@ -4,8 +4,6 @@ HF-MODEL-TOOL: HuggingFace Model Management Tool
 A CLI tool for managing locally downloaded HuggingFace models and datasets
 """
 
-import sys
-
 try:
     # Python 3.8+
     from importlib.metadata import version, PackageNotFoundError
@@ -17,9 +15,10 @@ except ImportError:
         # If importlib_metadata is not available, use a simple fallback
         def version(package_name):
             return "0.2.1"
-        
+
         class PackageNotFoundError(Exception):
             pass
+
 
 def get_version():
     """Get the package version with multiple fallback strategies."""
@@ -29,7 +28,7 @@ def get_version():
         # Development mode fallback - try to read from pyproject.toml
         from pathlib import Path
         import re
-        
+
         try:
             pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
             if pyproject_path.exists():
@@ -41,11 +40,15 @@ def get_version():
                         return match.group(1)
         except Exception:
             pass
-        
+
         # Ultimate fallback
         return "0.2.1"
 
+
 __version__ = get_version()
 
-# Make version available at package level
-__all__ = ["__version__"]
+# Import public API functions
+from .api import get_downloaded_models, get_model_info
+
+# Make version and API functions available at package level
+__all__ = ["__version__", "get_downloaded_models", "get_model_info"]

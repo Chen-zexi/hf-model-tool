@@ -53,7 +53,7 @@ def group_and_identify_duplicates(
             display_name = item.get("display_name", item["name"])
             asset_type = item.get("type", "unknown")
             source_type = item.get("source_type", "unknown")
-            
+
             # For LoRA adapters from custom directories, don't treat as duplicates
             # since they may be different versions with timestamps
             if asset_type == "lora_adapter" and source_type == "custom_directory":
@@ -67,9 +67,9 @@ def group_and_identify_duplicates(
             else:
                 # For other assets, use display name for duplicate detection
                 key = (asset_type, display_name.lower())
-            
+
             grouped_for_dupes[key].append(item["name"])
-            
+
         except (AttributeError, IndexError) as e:
             logger.warning(
                 f"Error processing asset name '{item.get('name', 'unknown')}': {e}"
@@ -102,21 +102,21 @@ def group_and_identify_duplicates(
         try:
             asset_type = item["type"]
             display_name = item.get("display_name", item["name"])
-            
+
             # Set display name and duplicate flag
             item["display_name"] = display_name
             item["is_duplicate"] = item["name"] in is_duplicate
 
             # Determine category and publisher/source
             category, publisher = _categorize_asset(item)
-            
+
             # Ensure category exists
             if category not in grouped_for_display:
                 logger.warning(f"Unknown asset category: {category}")
                 category = "unknown"
 
             grouped_for_display[category][publisher].append(item)
-            
+
         except (AttributeError, IndexError, KeyError) as e:
             logger.warning(
                 f"Error processing asset for display: {item.get('name', 'unknown')}: {e}"
@@ -128,7 +128,7 @@ def group_and_identify_duplicates(
     for category, publishers in grouped_for_display.items():
         count = sum(len(items) for items in publishers.values())
         total_counts[category] = count
-    
+
     logger.info(f"Grouped assets: {total_counts}")
 
     # Convert defaultdict to regular dict for return type compatibility
@@ -144,23 +144,23 @@ def group_and_identify_duplicates(
 def _categorize_asset(item: Dict[str, Any]) -> Tuple[str, str]:
     """
     Categorize an asset and determine its publisher/source.
-    
+
     Args:
         item: Asset dictionary
-        
+
     Returns:
         Tuple of (category, publisher/source)
     """
     asset_type = item.get("type", "unknown")
     name = item.get("name", "")
     source_type = item.get("source_type", "unknown")
-    
+
     # Handle HuggingFace format assets with improved publisher extraction
     if source_type == "huggingface_cache" or "--" in name:
         parts = name.split("--")
         if len(parts) >= 2:
             publisher = parts[1]
-            
+
             # Map asset types to categories
             if asset_type == "model":
                 return "models", publisher
@@ -173,7 +173,7 @@ def _categorize_asset(item: Dict[str, Any]) -> Tuple[str, str]:
                 return "models", publisher
             elif asset_type == "dataset":
                 return "datasets", publisher
-    
+
     # Handle custom directory structures
     if asset_type == "lora_adapter":
         # For LoRA adapters, use base model as publisher if available
@@ -183,22 +183,24 @@ def _categorize_asset(item: Dict[str, Any]) -> Tuple[str, str]:
             if "/" in base_model:
                 publisher = base_model.split("/")[0]
             else:
-                publisher = base_model.split("--")[0] if "--" in base_model else "custom"
+                publisher = (
+                    base_model.split("--")[0] if "--" in base_model else "custom"
+                )
         else:
             publisher = "custom"
         return "lora_adapters", publisher
-    
+
     elif asset_type == "custom_model":
         # For custom models, use directory parent as publisher
         path = Path(item.get("path", ""))
         publisher = path.parent.name if path.parent.name else "custom"
         return "custom_models", publisher
-    
+
     elif asset_type == "unknown_model":
         # For unknown models, use directory parent as publisher
         path = Path(item.get("path", ""))
         publisher = path.parent.name if path.parent.name else "unknown"
         return "unknown_models", publisher
-    
+
     # Default fallback
     return "unknown", "unknown"

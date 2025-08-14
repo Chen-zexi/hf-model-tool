@@ -71,7 +71,7 @@ class TestConfigManager:
             config = manager.load_config()
             custom_dirs = config["custom_directories"]
             assert len(custom_dirs) == 1
-            
+
             dir_entry = custom_dirs[0]
             assert isinstance(dir_entry, dict)
             assert "path" in dir_entry
@@ -101,7 +101,7 @@ class TestConfigManager:
             config = manager.load_config()
             custom_dirs = config["custom_directories"]
             assert len(custom_dirs) == 1
-            
+
             dir_entry = custom_dirs[0]
             assert dir_entry["type"] == "custom_directory"
 
@@ -147,7 +147,7 @@ class TestConfigManager:
             config = manager.load_config()
             custom_dirs = config["custom_directories"]
             assert len(custom_dirs) == 1
-            
+
             # Check that only test_dir2 remains
             remaining_dir = custom_dirs[0]
             assert Path(remaining_dir["path"]).resolve() == test_dir2.resolve()
@@ -164,10 +164,10 @@ class TestConfigManager:
             # Create a config with legacy string format
             test_dir = Path(temp_dir) / "legacy_test"
             test_dir.mkdir()
-            
+
             config = {
                 "custom_directories": [str(test_dir)],  # Legacy string format
-                "include_default_cache": True
+                "include_default_cache": True,
             }
             manager.save_config(config)
 

@@ -138,10 +138,10 @@ class TestGetItems:
             (dataset_blobs / "data").write_bytes(b"x" * 100)
 
             items = get_items(str(cache_dir))
-            
+
             # Should detect at least 2 items
             assert len(items) >= 2
-            
+
             # Check that we have both models and datasets
             types_found = {item["type"] for item in items}
             assert "model" in types_found or "dataset" in types_found

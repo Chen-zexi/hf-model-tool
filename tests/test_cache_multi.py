@@ -65,7 +65,7 @@ class TestMultiDirectoryScanning:
             mock_config = Mock()
             mock_config.get_all_directories_with_types.return_value = [
                 {"path": str(dir1), "type": "huggingface", "source": "test1"},
-                {"path": str(dir2), "type": "huggingface", "source": "test2"}
+                {"path": str(dir2), "type": "huggingface", "source": "test2"},
             ]
             mock_config_class.return_value = mock_config
 
@@ -101,7 +101,7 @@ class TestMultiDirectoryScanning:
             mock_config = Mock()
             mock_config.get_all_directories_with_types.return_value = [
                 {"path": str(dir1), "type": "huggingface", "source": "test1"},
-                {"path": str(dir2), "type": "huggingface", "source": "test2"}
+                {"path": str(dir2), "type": "huggingface", "source": "test2"},
             ]
             mock_config_class.return_value = mock_config
 
@@ -128,7 +128,11 @@ class TestMultiDirectoryScanning:
             mock_config = Mock()
             mock_config.get_all_directories_with_types.return_value = [
                 {"path": str(existing_dir), "type": "huggingface", "source": "test1"},
-                {"path": "/nonexistent/directory", "type": "huggingface", "source": "test2"}
+                {
+                    "path": "/nonexistent/directory",
+                    "type": "huggingface",
+                    "source": "test2",
+                },
             ]
             mock_config_class.return_value = mock_config
 
@@ -190,6 +194,4 @@ class TestMultiDirectoryScanning:
 
             # Check logging calls
             mock_logger.info.assert_any_call("Scanning 1 directories for assets")
-            mock_logger.info.assert_any_call(
-                "Found 1 assets across all directories"
-            )
+            mock_logger.info.assert_any_call("Found 1 assets across all directories")

@@ -132,10 +132,16 @@ class ConfigManager:
         directory_str = str(directory_path)
 
         # Check if directory already exists (regardless of type)
-        existing_entry = next((entry for entry in custom_dirs 
-                              if (isinstance(entry, str) and entry == directory_str) or
-                                 (isinstance(entry, dict) and entry.get("path") == directory_str)), None)
-        
+        existing_entry = next(
+            (
+                entry
+                for entry in custom_dirs
+                if (isinstance(entry, str) and entry == directory_str)
+                or (isinstance(entry, dict) and entry.get("path") == directory_str)
+            ),
+            None,
+        )
+
         if existing_entry:
             logger.info(f"Directory already in config: {directory_str}")
             return False
@@ -144,9 +150,9 @@ class ConfigManager:
         directory_entry = {
             "path": directory_str,
             "type": path_type,
-            "added_date": datetime.now().isoformat()
+            "added_date": datetime.now().isoformat(),
         }
-        
+
         custom_dirs.append(directory_entry)
         config["custom_directories"] = custom_dirs
         self.save_config(config)
@@ -182,11 +188,11 @@ class ConfigManager:
                 if entry_path == directory_path or entry_path == directory:
                     found_index = i
                     break
-                    
+
         if found_index == -1:
             logger.info(f"Directory not in config: {directory}")
             return False
-            
+
         custom_dirs.pop(found_index)
         config["custom_directories"] = custom_dirs
         self.save_config(config)
@@ -203,7 +209,7 @@ class ConfigManager:
         """
         directory_info = self.get_all_directories_with_types()
         return [info["path"] for info in directory_info]
-        
+
     def get_all_directories_with_types(self) -> List[Dict[str, str]]:
         """
         Get all configured directories with their types.
@@ -220,17 +226,21 @@ class ConfigManager:
             default_datasets = Path.home() / ".cache" / "huggingface" / "datasets"
 
             if default_hub.exists():
-                directories.append({
-                    "path": str(default_hub),
-                    "type": "huggingface",
-                    "source": "default_cache"
-                })
+                directories.append(
+                    {
+                        "path": str(default_hub),
+                        "type": "huggingface",
+                        "source": "default_cache",
+                    }
+                )
             if default_datasets.exists():
-                directories.append({
-                    "path": str(default_datasets), 
-                    "type": "huggingface",
-                    "source": "default_cache"
-                })
+                directories.append(
+                    {
+                        "path": str(default_datasets),
+                        "type": "huggingface",
+                        "source": "default_cache",
+                    }
+                )
 
         # Add custom directories (handle both old and new formats)
         custom_dirs = config.get("custom_directories", [])
@@ -238,22 +248,24 @@ class ConfigManager:
             if isinstance(dir_entry, str):
                 # Legacy format - assume custom type
                 if Path(dir_entry).exists():
-                    directories.append({
-                        "path": dir_entry,
-                        "type": "custom",
-                        "source": "custom_legacy"
-                    })
+                    directories.append(
+                        {"path": dir_entry, "type": "custom", "source": "custom_legacy"}
+                    )
                 else:
-                    logger.warning(f"Configured directory no longer exists: {dir_entry}")
+                    logger.warning(
+                        f"Configured directory no longer exists: {dir_entry}"
+                    )
             elif isinstance(dir_entry, dict):
                 # New format with type information
                 dir_path = dir_entry.get("path")
                 if dir_path and Path(dir_path).exists():
-                    directories.append({
-                        "path": dir_path,
-                        "type": dir_entry.get("type", "custom"),
-                        "source": "custom_configured"
-                    })
+                    directories.append(
+                        {
+                            "path": dir_path,
+                            "type": dir_entry.get("type", "custom"),
+                            "source": "custom_configured",
+                        }
+                    )
                 else:
                     logger.warning(f"Configured directory no longer exists: {dir_path}")
 
@@ -291,8 +303,9 @@ class ConfigManager:
 
         # Import here to avoid circular imports
         from .asset_detector import AssetDetector
+
         detector = AssetDetector()
-        
+
         # Check for typical HuggingFace directory structure
         # Look for directories with "models--" or "datasets--" prefix
         # or directories containing "blobs" subdirectory
@@ -303,7 +316,7 @@ class ConfigManager:
                     return True
                 if (item / "blobs").exists():
                     return True
-                
+
                 # Check for custom model patterns using asset detector
                 try:
                     asset_info = detector.detect_asset_type(item)
@@ -321,7 +334,7 @@ class ConfigManager:
                 return True
         except Exception:
             pass
-        
+
         # Legacy check for blobs directory
         if (directory_path / "blobs").exists():
             return True

@@ -77,7 +77,7 @@ class TestGroupAndIdentifyDuplicates:
                 "source_type": "huggingface_cache",
             },
             {
-                "name": "models--huggingface--bert-base-uncased",  
+                "name": "models--huggingface--bert-base-uncased",
                 "size": 1000,  # Same size = duplicate
                 "date": datetime(2023, 1, 2),
                 "type": "model",
@@ -114,7 +114,7 @@ class TestGroupAndIdentifyDuplicates:
                 "source_type": "huggingface_cache",
             },
             {
-                "name": "models--huggingface--bert-base-uncased",  
+                "name": "models--huggingface--bert-base-uncased",
                 "size": 1100,  # Different size = NOT duplicate
                 "date": datetime(2023, 1, 2),
                 "type": "model",
@@ -275,7 +275,7 @@ class TestGroupAndIdentifyDuplicates:
         # Should only process valid items properly
         if "models" in grouped and "huggingface" in grouped["models"]:
             assert len(grouped["models"]["huggingface"]) == 1
-        
+
         # Should log warnings for malformed items
         assert mock_logger.warning.called
 

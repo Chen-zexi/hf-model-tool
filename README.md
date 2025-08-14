@@ -61,6 +61,47 @@ Launches the interactive CLI with:
 - Asset management tools for all supported formats
 - Easy directory configuration and management
 
+### Programmatic API Usage
+
+The tool can be imported as a Python library for integration with other tools like VLLM:
+
+```python
+from hf_model_tool import get_downloaded_models, get_model_info
+
+# Get all downloaded models in VLLM-compatible format
+models = get_downloaded_models()
+print(models)
+# Output: ['bert-base-uncased', 'microsoft/Florence-2-large', 'facebook/bart-large-cnn', ...]
+
+# Get detailed information about a specific model
+info = get_model_info('microsoft/Florence-2-large')
+print(info['path'])  # /home/user/.cache/huggingface/hub/models--microsoft--Florence-2-large
+print(info['size'])  # Size in bytes
+print(info['metadata'])  # Model configuration details
+
+# Filter models by type
+models = get_downloaded_models(
+    include_custom_models=True,  # Include custom/merged models
+    include_lora_adapters=False,  # Exclude LoRA adapters
+    deduplicate=True  # Remove duplicates (default)
+)
+
+# Use with VLLM
+from vllm import LLM
+llm = LLM(model=models[0])  # Use any model name from the list
+```
+
+#### API Functions
+
+- **`get_downloaded_models()`**: Returns a list of all downloaded models in VLLM-compatible naming format (e.g., "Qwen/Qwen3-30B-Instruct")
+  - `include_custom_models` (bool): Include custom/merged models from non-HF directories (default: True)
+  - `include_lora_adapters` (bool): Include LoRA adapters in results (default: False)
+  - `deduplicate` (bool): Remove duplicate model names (default: True)
+
+- **`get_model_info(model_name)`**: Get detailed information about a specific model
+  - Returns a dictionary with: path, size, type, subtype, metadata, source_directory, last_modified
+  - Returns None if model not found
+
 ### Command Line Usage
 
 The tool provides comprehensive command-line options for direct operations:
