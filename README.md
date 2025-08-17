@@ -6,7 +6,6 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/hf-model-tool.svg)](https://pypi.org/project/hf-model-tool/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![codecov](https://codecov.io/gh/Chen-zexi/hf-model-tool/branch/main/graph/badge.svg)](https://codecov.io/gh/Chen-zexi/hf-model-tool)
 
 A CLI tool for managing your locally downloaded Huggingface models and datasets
 
@@ -28,6 +27,7 @@ A CLI tool for managing your locally downloaded Huggingface models and datasets
 *   **Duplicate Detection:** Find and clean duplicate downloads to save disk space
 *   **Asset Details:** View model configurations and dataset documentation with rich formatting
 *   **Directory Management:** Add and manage custom directories containing your AI assets
+*   **Manifest System:** Customize model names, publishers, and metadata with JSON manifests
 
 ### Supported Asset Types
 
@@ -65,7 +65,24 @@ Launches the interactive CLI with:
 
 The tool provides API specifically designed for [vLLM-CLI](https://github.com/Chen-zexi/vllm-cli) for model discovery and management. 
 
-Also can be lanched directly from [vLLM-CLI](https://github.com/Chen-zexi/vllm-cli) 
+Also can be launched directly from [vLLM-CLI](https://github.com/Chen-zexi/vllm-cli)
+
+### Python API Usage
+
+```python
+from hf_model_tool import get_downloaded_models
+from hf_model_tool.api import HFModelAPI
+
+# Quick access to models
+models = get_downloaded_models()
+
+# Full API access
+api = HFModelAPI()
+api.add_directory("/path/to/models", "custom")
+assets = api.list_assets()
+```
+
+See [API Reference](docs/api-reference.md) for complete documentation. 
 
 
 ### Command Line Usage
@@ -143,6 +160,13 @@ hf-model-tool -l --sort date
 4. **View Details:** Inspect model configurations and dataset documentation
 5. **Configuration:** Manage directories, change sorting preferences, and access help
 
+## Documentation
+
+### Quick Links
+- [**Manifest System Guide**](docs/manifest-system.md) - Learn how to customize model metadata with JSON manifests
+- [**Custom Directories Guide**](docs/custom-directories.md) - Configure and manage custom model directories
+- [**API Reference**](docs/api-reference.md) - Complete API documentation for programmatic usage
+
 ## Configuration
 
 ### Directory Management
@@ -156,6 +180,21 @@ Access via "Config" from any screen:
 - **Directory Management:** Add, remove, and test directories
 - **Sort Options:** Size (default), Date, or Name
 - **Help System:** Navigation and usage guide
+
+### Manifest System
+
+**Automatic Generation**: When you add a custom directory, the tool automatically generates a `models_manifest.json` file that:
+- Becomes the primary source for model information
+- Is always read first for classification
+- Can be edited to ensure accurate display in vLLM-CLI
+
+Customize model metadata using JSON manifests:
+- Define custom names for your models
+- Specify publishers and organizations  
+- Add notes and documentation
+- See [Manifest System Guide](docs/manifest-system.md) for details
+
+**Important**: Review and edit auto-generated manifests to ensure model names and publishers are accurate for your use case.
 
 
 ## Project Structure
