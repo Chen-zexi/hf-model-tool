@@ -48,7 +48,19 @@ def get_version():
 __version__ = get_version()
 
 # Import public API functions
-from .api import get_downloaded_models, get_model_info
+from .api import get_downloaded_models, get_model_info, HFModelAPI
+from .registry import ModelRegistry, get_registry
+from .lora_manager import LoRAManager, get_lora_manager, LoRAProfile
 
 # Make version and API functions available at package level
-__all__ = ["__version__", "get_downloaded_models", "get_model_info"]
+__all__ = [
+    "__version__", 
+    "get_downloaded_models", 
+    "get_model_info", 
+    "HFModelAPI", 
+    "ModelRegistry", 
+    "get_registry",
+    "LoRAManager",
+    "get_lora_manager",
+    "LoRAProfile"
+]
