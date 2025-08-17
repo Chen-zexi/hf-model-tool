@@ -89,6 +89,17 @@ class AssetDetector:
             logger.warning(f"Error accessing files in {directory}: {e}")
         return all_files
 
+    def _get_root_files(self, directory: Path) -> List[Path]:
+        """Get only files directly in this directory (not subdirectories)."""
+        root_files = []
+        try:
+            for item in directory.iterdir():
+                if item.is_file():
+                    root_files.append(item)
+        except (OSError, PermissionError) as e:
+            logger.warning(f"Error accessing root files in {directory}: {e}")
+        return root_files
+
     def _calculate_total_size(self, directory: Path) -> int:
         """Calculate total size of all files in directory."""
         total_size = 0
@@ -105,16 +116,23 @@ class AssetDetector:
 
     def _classify_asset(self, directory: Path, all_files: List[Path]) -> Dict[str, Any]:
         """Classify the asset type based on file patterns."""
+        # Get root files for accurate model detection
+        root_files = self._get_root_files(directory)
+        root_file_names = [f.name for f in root_files]
+
+        # Keep all files info for comprehensive analysis
         file_names = [f.name for f in all_files]
         relative_paths = [f.relative_to(directory) for f in all_files]
 
-        # Check for LoRA adapter
+        # Check for LoRA adapter (already handles root vs subdirs correctly)
         lora_result = self._detect_lora_adapter(directory, file_names, relative_paths)
         if lora_result:
             return lora_result
 
-        # Check for custom/merged model
-        custom_result = self._detect_custom_model(directory, file_names, relative_paths)
+        # Check for custom/merged model - use root files only
+        custom_result = self._detect_custom_model(
+            directory, root_file_names, relative_paths
+        )
         if custom_result:
             return custom_result
 
@@ -128,8 +146,8 @@ class AssetDetector:
         if dataset_result:
             return dataset_result
 
-        # Fallback to generic classification
-        return self._detect_generic_asset(directory, file_names, relative_paths)
+        # Fallback to generic classification - use root files for accurate detection
+        return self._detect_generic_asset(directory, root_file_names, relative_paths)
 
     def _detect_lora_adapter(
         self, directory: Path, file_names: List[str], relative_paths: List[Path]
@@ -200,13 +218,14 @@ class AssetDetector:
         return None
 
     def _detect_custom_model(
-        self, directory: Path, file_names: List[str], relative_paths: List[Path]
+        self, directory: Path, root_file_names: List[str], relative_paths: List[Path]
     ) -> Optional[Dict[str, Any]]:
-        """Detect custom or merged models."""
-        has_config = self.model_patterns["config"] in file_names
+        """Detect custom or merged models - checks only root-level files."""
+        # Only check for config.json and model files at root level
+        has_config = self.model_patterns["config"] in root_file_names
         has_safetensors = any(
             any(pattern in f for pattern in self.model_patterns["safetensors"])
-            for f in file_names
+            for f in root_file_names
         )
 
         # Check if it's in a non-standard directory structure (not HF cache format)
@@ -224,7 +243,7 @@ class AssetDetector:
                 "metadata": metadata,
                 "files": [
                     f
-                    for f in file_names
+                    for f in root_file_names
                     if any(ext in f for ext in [".safetensors", ".bin"])
                 ],
                 "display_name": self._generate_display_name(directory, "Custom"),
@@ -276,18 +295,48 @@ class AssetDetector:
         return None
 
     def _detect_generic_asset(
-        self, directory: Path, file_names: List[str], relative_paths: List[Path]
+        self, directory: Path, root_file_names: List[str], relative_paths: List[Path]
     ) -> Dict[str, Any]:
-        """Fallback detection for unrecognized assets."""
-        has_safetensors = any(".safetensors" in f for f in file_names)
+        """Fallback detection for unrecognized assets - checks only root-level files."""
+        # Only check root-level files to avoid false positives
+        has_safetensors = any(".safetensors" in f for f in root_file_names)
         has_model_files = any(
-            ext in f for f in file_names for ext in [".bin", ".pt", ".pth"]
+            ext in f for f in root_file_names for ext in [".bin", ".pt", ".pth"]
         )
 
         if has_safetensors or has_model_files:
             asset_type = "unknown_model"
             subtype = "safetensors" if has_safetensors else "generic"
         else:
+            # Don't classify regular directories as unknown assets
+            # Only return unknown if there are actually some ML-related files at root
+            # Exclude manifest files and non-ML JSON files
+            ml_json_patterns = [
+                "config.json",
+                "tokenizer_config.json",
+                "generation_config.json",
+                "model_config.json",
+                "training_args.json",
+                "adapter_config.json",
+            ]
+
+            has_ml_json = any(f in ml_json_patterns for f in root_file_names)
+
+            has_other_ml_files = any(
+                ext in f
+                for f in root_file_names
+                for ext in [".yaml", ".yml", ".h5", ".ckpt", ".pkl"]
+            )
+
+            if not (has_ml_json or has_other_ml_files):
+                return {
+                    "type": "skip",
+                    "subtype": "non_ml_directory",
+                    "metadata": {},
+                    "files": [],
+                    "display_name": "",
+                    "size": 0,
+                }
             asset_type = "unknown"
             subtype = "generic"
 
@@ -295,7 +344,7 @@ class AssetDetector:
             "type": asset_type,
             "subtype": subtype,
             "metadata": {},
-            "files": file_names,
+            "files": root_file_names,
             "display_name": self._generate_display_name(directory, "Unknown"),
         }
 

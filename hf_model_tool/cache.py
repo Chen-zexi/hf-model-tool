@@ -5,6 +5,7 @@ Cache management module for HF-MODEL-TOOL.
 Handles scanning and parsing of HuggingFace cache directories,
 providing structured access to locally stored models and datasets.
 """
+import json
 import logging
 from datetime import datetime
 from typing import List, Dict, Union, Set, Any
@@ -12,8 +13,36 @@ from pathlib import Path
 
 from .config import ConfigManager
 from .asset_detector import AssetDetector
+from .manifest import ManifestHandler
 
 logger = logging.getLogger(__name__)
+
+# Mapping of model types to likely publishers
+MODEL_TYPE_TO_PUBLISHER = {
+    "qwen": "Qwen",
+    "qwen2": "Qwen",
+    "qwen3": "Qwen",
+    "gemma": "google",
+    "gemma2": "google",
+    "gemma3": "google",
+    "gemma3_text": "google",
+    "llama": "meta-llama",
+    "llama2": "meta-llama",
+    "llama3": "meta-llama",
+    "mistral": "mistralai",
+    "mixtral": "mistralai",
+    "gpt": "openai",
+    "gpt2": "openai",
+    "gptj": "EleutherAI",
+    "gpt_neox": "EleutherAI",
+    "deepseek": "deepseek-ai",
+    "deepseek2": "deepseek-ai",
+    "yi": "01-ai",
+    "baichuan": "baichuan-inc",
+    "chatglm": "THUDM",
+    "bloom": "bigscience",
+    "falcon": "tiiuae",
+}
 
 
 def get_huggingface_items(
@@ -126,6 +155,52 @@ def get_huggingface_items(
     return items
 
 
+def infer_publisher_from_config(config_path: Path) -> str:
+    """
+    Infer publisher from model config.json.
+
+    Args:
+        config_path: Path to config.json
+
+    Returns:
+        Inferred publisher name or "local"
+    """
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+
+        # First check _name_or_path for org/model pattern
+        name_or_path = config.get("_name_or_path", "")
+        if name_or_path and "/" in name_or_path:
+            # Extract organization from HF model ID
+            return name_or_path.split("/")[0]
+
+        # Try to infer from model_type
+        model_type = config.get("model_type", "").lower()
+        if model_type:
+            # Check direct match
+            if model_type in MODEL_TYPE_TO_PUBLISHER:
+                return MODEL_TYPE_TO_PUBLISHER[model_type]
+
+            # Check prefix match (e.g., "qwen3" starts with "qwen")
+            for key, publisher in MODEL_TYPE_TO_PUBLISHER.items():
+                if model_type.startswith(key):
+                    return publisher
+
+        # Try architectures field
+        architectures = config.get("architectures", [])
+        if architectures and len(architectures) > 0:
+            arch = architectures[0].lower()
+            for key, publisher in MODEL_TYPE_TO_PUBLISHER.items():
+                if key in arch:
+                    return publisher
+
+    except Exception as e:
+        logger.debug(f"Could not infer publisher from config: {e}")
+
+    return "local"
+
+
 def get_custom_items(
     custom_dir: Union[str, Path],
 ) -> List[Dict[str, Union[str, int, datetime]]]:
@@ -157,7 +232,78 @@ def get_custom_items(
     logger.info(f"Scanning custom directory: {custom_dir}")
 
     detector = AssetDetector()
+    manifest_handler = ManifestHandler()
 
+    # Check for manifest
+    manifest = manifest_handler.load_manifest(custom_dir)
+
+    # Collect discovered models first
+    discovered_items = []
+
+    # First check if the custom directory itself is a model/asset
+    # But only if it looks like a model directory (has config.json)
+    config_file = custom_dir / "config.json"
+    if config_file.exists():
+        try:
+            asset_info = detector.detect_asset_type(custom_dir)
+            # Skip directories that are not ML assets
+            if asset_info.get("type") == "skip":
+                logger.debug(f"Skipping non-ML directory: {custom_dir.name}")
+            elif asset_info["size"] > 0 and asset_info["type"] in [
+                "model",
+                "custom_model",
+                "lora_adapter",
+            ]:
+                # The directory itself is a model/lora
+                mod_time = detector.get_modification_date(custom_dir)
+
+                # Use the actual directory name, not parent
+                model_name = custom_dir.name
+
+                # Infer publisher from config if it's a model
+                publisher = "unknown"
+                if asset_info["type"] in ["model", "custom_model"]:
+                    publisher = infer_publisher_from_config(config_file)
+
+                item_dict: Dict[str, Union[str, int, datetime]] = {
+                    "name": model_name,
+                    "size": asset_info["size"],
+                    "date": mod_time,
+                    "type": asset_info["type"],
+                    "subtype": asset_info.get("subtype", "custom"),
+                    "metadata": asset_info.get("metadata", {}),
+                    "display_name": model_name,
+                    "path": str(custom_dir),
+                    "files": asset_info.get("files", []),
+                    "source_type": "custom_directory",
+                    "publisher": publisher,
+                }
+
+                # Add LoRA-specific path if available
+                if "lora_path" in asset_info:
+                    item_dict["lora_path"] = asset_info["lora_path"]
+
+                discovered_items.append(item_dict)
+                logger.info(
+                    f"Detected {asset_info['type']} at custom directory root: {custom_dir.name}"
+                )
+
+                # If the directory itself is a model, don't scan subdirectories
+                # Merge with manifest if available and return
+                if manifest:
+                    items = manifest_handler.merge_with_discovered(
+                        manifest.get("models", []), discovered_items, custom_dir
+                    )
+                    logger.info(
+                        f"Merged manifest with discovered items: {len(items)} total"
+                    )
+                    return items
+                else:
+                    return discovered_items
+        except Exception as e:
+            logger.debug(f"Custom directory root is not a valid model: {e}")
+
+    # Then scan subdirectories as before
     try:
         for item_dir in custom_dir.iterdir():
             if not item_dir.is_dir():
@@ -166,6 +312,12 @@ def get_custom_items(
             try:
                 # Use flexible asset detection for custom directories
                 asset_info = detector.detect_asset_type(item_dir)
+
+                # Skip directories that are not ML assets or are just containers
+                asset_type = asset_info.get("type")
+                if asset_type in ["skip", "unknown"]:
+                    logger.debug(f"Skipping {asset_type} directory: {item_dir.name}")
+                    continue
 
                 # Skip if no content found
                 if asset_info["size"] == 0:
@@ -181,9 +333,19 @@ def get_custom_items(
                     time_str = mod_time.strftime("%Y-%m-%d %H:%M")
                     display_name = f"{display_name} ({time_str})"
 
+                # Use the actual directory name
+                model_name = item_dir.name
+
+                # Infer publisher from config if it's a model
+                publisher = "unknown"
+                if asset_info["type"] in ["model", "custom_model"]:
+                    config_path = item_dir / "config.json"
+                    if config_path.exists():
+                        publisher = infer_publisher_from_config(config_path)
+
                 # Create item dictionary with enhanced information
                 item_dict: Dict[str, Union[str, int, datetime]] = {
-                    "name": asset_info.get("display_name", item_dir.name),
+                    "name": model_name,
                     "size": asset_info["size"],
                     "date": mod_time,
                     "type": asset_info["type"],
@@ -193,13 +355,14 @@ def get_custom_items(
                     "path": str(item_dir),
                     "files": asset_info.get("files", []),
                     "source_type": "custom_directory",
+                    "publisher": publisher,
                 }
 
                 # Add LoRA-specific path if available
                 if "lora_path" in asset_info:
                     item_dict["lora_path"] = asset_info["lora_path"]
 
-                items.append(item_dict)
+                discovered_items.append(item_dict)
 
                 logger.debug(
                     f"Detected {asset_info['type']} custom asset: {item_dir.name}"
@@ -216,7 +379,16 @@ def get_custom_items(
         logger.error(f"Error reading custom directory {custom_dir}: {e}")
         raise
 
-    logger.info(f"Found {len(items)} custom assets")
+    # Merge with manifest if available
+    if manifest:
+        items = manifest_handler.merge_with_discovered(
+            manifest.get("models", []), discovered_items, custom_dir
+        )
+        logger.info(f"Found {len(items)} custom assets (merged with manifest)")
+    else:
+        items = discovered_items
+        logger.info(f"Found {len(items)} custom assets")
+
     return items
 
 

@@ -11,6 +11,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
+from .manifest import ManifestHandler
+from .asset_detector import AssetDetector
+
 logger = logging.getLogger(__name__)
 
 
@@ -158,6 +161,11 @@ class ConfigManager:
         self.save_config(config)
 
         logger.info(f"Added {path_type} directory to config: {directory_str}")
+
+        # Optionally generate manifest for the directory
+        if path_type == "custom":
+            self._offer_manifest_generation(directory_path)
+
         return True
 
     def remove_directory(self, directory: str) -> bool:
@@ -286,6 +294,63 @@ class ConfigManager:
         logger.info(f"Toggled default cache inclusion to: {not current_state}")
         return not current_state
 
+    def _offer_manifest_generation(self, directory: Path) -> bool:
+        """
+        Offer to generate a manifest for a newly added directory.
+
+        Args:
+            directory: Path to the directory
+
+        Returns:
+            True if manifest was generated, False otherwise
+        """
+        try:
+            manifest_handler = ManifestHandler()
+
+            # Check if manifest already exists
+            existing_manifest = manifest_handler.load_manifest(directory)
+            if existing_manifest:
+                logger.info(f"Manifest already exists for {directory}")
+                return False
+
+            # Use the existing get_custom_items function to scan for models
+            from .cache import get_custom_items
+
+            items = get_custom_items(directory)
+
+            # Convert items to the format expected by manifest
+            discovered_models = []
+            for item in items:
+                discovered_models.append(
+                    {
+                        "path": item.get("path", str(directory / item["name"])),
+                        "name": item["name"],
+                        "type": item.get("type", "custom_model"),
+                        "size": item.get("size", 0),
+                        "metadata": item.get("metadata", {}),
+                        "display_name": item.get("display_name", item["name"]),
+                    }
+                )
+
+            if discovered_models:
+                # Generate manifest
+                manifest = manifest_handler.generate_manifest(
+                    directory, discovered_models
+                )
+
+                # For now, auto-save the manifest
+                # In a full implementation, this could be interactive
+                if manifest_handler.save_manifest(directory, manifest):
+                    logger.info(
+                        f"Generated manifest for {directory} with {len(discovered_models)} models"
+                    )
+                    return True
+
+        except Exception as e:
+            logger.error(f"Error generating manifest for {directory}: {e}")
+
+        return False
+
     def validate_directory(self, directory: str) -> bool:
         """
         Validate if a directory contains ML assets (HuggingFace, LoRA, custom models).
@@ -300,9 +365,6 @@ class ConfigManager:
 
         if not directory_path.exists() or not directory_path.is_dir():
             return False
-
-        # Import here to avoid circular imports
-        from .asset_detector import AssetDetector
 
         detector = AssetDetector()
 

@@ -191,9 +191,12 @@ def _categorize_asset(item: Dict[str, Any]) -> Tuple[str, str]:
         return "lora_adapters", publisher
 
     elif asset_type == "custom_model":
-        # For custom models, use directory parent as publisher
-        path = Path(item.get("path", ""))
-        publisher = path.parent.name if path.parent.name else "custom"
+        # For custom models, first check for inferred publisher
+        publisher = item.get("publisher", None)
+        if not publisher or publisher == "unknown":
+            # Fall back to directory parent as publisher
+            path = Path(item.get("path", ""))
+            publisher = path.parent.name if path.parent.name else "custom"
         return "custom_models", publisher
 
     elif asset_type == "unknown_model":
