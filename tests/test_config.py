@@ -307,3 +307,166 @@ class TestConfigManager:
             config = manager.load_config()
             assert config["custom_directories"] == []
             assert config["include_default_cache"] is True
+
+    def test_toggle_ollama_scanning(self):
+        """Test toggling Ollama scanning feature."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ConfigManager(Path(temp_dir))
+
+            # Should start as False by default
+            config = manager.load_config()
+            assert config.get("scan_ollama", False) is False
+
+            # Toggle to True
+            new_state = manager.toggle_ollama_scanning()
+            assert new_state is True
+
+            # Verify saved
+            config = manager.load_config()
+            assert config["scan_ollama"] is True
+
+            # Toggle back to False
+            new_state = manager.toggle_ollama_scanning()
+            assert new_state is False
+
+    def test_add_ollama_directory(self):
+        """Test adding an Ollama directory to configuration."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ConfigManager(Path(temp_dir))
+
+            # Create a test Ollama directory structure
+            ollama_dir = Path(temp_dir) / ".ollama" / "models"
+            ollama_dir.mkdir(parents=True)
+            (ollama_dir / "manifests").mkdir()
+            (ollama_dir / "blobs").mkdir()
+
+            # Add Ollama directory
+            result = manager.add_ollama_directory(str(ollama_dir))
+            assert result is True
+
+            # Verify it was added
+            config = manager.load_config()
+            ollama_dirs = config.get("ollama_directories", [])
+            assert len(ollama_dirs) == 1
+            assert Path(ollama_dirs[0]).resolve() == ollama_dir.resolve()
+
+            # Try adding again - should return False
+            result = manager.add_ollama_directory(str(ollama_dir))
+            assert result is False
+
+    def test_add_ollama_directory_without_structure(self):
+        """Test adding directory without Ollama structure (should warn but proceed)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ConfigManager(Path(temp_dir))
+
+            # Create directory without Ollama structure
+            not_ollama_dir = Path(temp_dir) / "not_ollama"
+            not_ollama_dir.mkdir()
+
+            # Should still add but with warning in logs
+            result = manager.add_ollama_directory(str(not_ollama_dir))
+            assert result is True
+
+            # Verify it was added
+            ollama_dirs = manager.get_ollama_directories()
+            assert len(ollama_dirs) == 1
+
+    def test_add_nonexistent_ollama_directory(self):
+        """Test adding a non-existent Ollama directory raises error."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ConfigManager(Path(temp_dir))
+
+            with pytest.raises(ValueError, match="Directory does not exist"):
+                manager.add_ollama_directory("/nonexistent/ollama/path")
+
+    def test_remove_ollama_directory(self):
+        """Test removing an Ollama directory from configuration."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ConfigManager(Path(temp_dir))
+
+            # Add Ollama directories
+            ollama_dir1 = Path(temp_dir) / "ollama1"
+            ollama_dir2 = Path(temp_dir) / "ollama2"
+            ollama_dir1.mkdir()
+            ollama_dir2.mkdir()
+            (ollama_dir1 / "manifests").mkdir()
+            (ollama_dir1 / "blobs").mkdir()
+            (ollama_dir2 / "manifests").mkdir()
+            (ollama_dir2 / "blobs").mkdir()
+
+            manager.add_ollama_directory(str(ollama_dir1))
+            manager.add_ollama_directory(str(ollama_dir2))
+
+            # Remove one
+            result = manager.remove_ollama_directory(str(ollama_dir1))
+            assert result is True
+
+            # Verify removal
+            ollama_dirs = manager.get_ollama_directories()
+            assert len(ollama_dirs) == 1
+            assert Path(ollama_dirs[0]).resolve() == ollama_dir2.resolve()
+
+            # Try removing non-existent - should return False
+            result = manager.remove_ollama_directory("/nonexistent/path")
+            assert result is False
+
+    def test_get_ollama_directories(self):
+        """Test getting list of configured Ollama directories."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ConfigManager(Path(temp_dir))
+
+            # Initially should be empty
+            ollama_dirs = manager.get_ollama_directories()
+            assert ollama_dirs == []
+
+            # Add some directories
+            ollama_dir1 = Path(temp_dir) / "ollama1"
+            ollama_dir2 = Path(temp_dir) / "ollama2"
+            ollama_dir1.mkdir()
+            ollama_dir2.mkdir()
+
+            manager.add_ollama_directory(str(ollama_dir1))
+            manager.add_ollama_directory(str(ollama_dir2))
+
+            # Should return both
+            ollama_dirs = manager.get_ollama_directories()
+            assert len(ollama_dirs) == 2
+            resolved_dirs = [Path(d).resolve() for d in ollama_dirs]
+            assert ollama_dir1.resolve() in resolved_dirs
+            assert ollama_dir2.resolve() in resolved_dirs
+
+    def test_get_all_directories_with_ollama(self):
+        """Test that get_all_directories includes Ollama dirs when scanning is enabled."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = ConfigManager(Path(temp_dir))
+
+            # Create custom Ollama directory
+            custom_ollama = Path(temp_dir) / "custom_ollama"
+            custom_ollama.mkdir()
+            (custom_ollama / "manifests").mkdir()
+            (custom_ollama / "blobs").mkdir()
+
+            # Add custom Ollama directory
+            manager.add_ollama_directory(str(custom_ollama))
+
+            # Enable Ollama scanning
+            manager.toggle_ollama_scanning()
+
+            # Mock home directory to control default paths
+            with patch.object(Path, "home", return_value=Path(temp_dir)):
+                # Create fake default Ollama directory
+                default_ollama = Path(temp_dir) / ".ollama" / "models"
+                default_ollama.mkdir(parents=True)
+
+                dirs = manager.get_all_directories_with_types()
+
+                # Should include both default and custom Ollama directories
+                dir_info = [d for d in dirs if d.get("type") == "ollama"]
+                assert len(dir_info) >= 1  # At least custom should be there
+
+                # Check that custom Ollama dir is included
+                custom_found = any(
+                    Path(d["path"]).resolve() == custom_ollama.resolve()
+                    for d in dir_info
+                )
+                assert custom_found
