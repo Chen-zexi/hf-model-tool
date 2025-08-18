@@ -19,6 +19,138 @@ from .config import ConfigManager
 
 logger = logging.getLogger(__name__)
 
+# Constants for directory type mappings
+TYPE_MAPPING = {
+    "HuggingFace Cache": "huggingface",
+    "Custom Directory": "custom",
+    "Ollama Models Directory": "ollama",
+    "LoRA Adapters Directory": "lora",
+    "Auto-detect": "auto",
+}
+
+DIRECTORY_TYPE_OPTIONS = [
+    "HuggingFace Cache",
+    "Custom Directory",
+    "Ollama Models Directory",
+    "LoRA Adapters Directory",
+    "Auto-detect",
+]
+
+
+def _get_directory_type_choice(console: Console) -> Optional[str]:
+    """
+    Display directory type selection UI and return user's choice.
+
+    Args:
+        console: Rich console for output
+
+    Returns:
+        Selected directory type string or None if cancelled
+    """
+    console.print("\n[bold]Select Directory Type:[/bold]")
+    console.print(
+        "[cyan]HuggingFace Cache:[/cyan] Standard HF cache with models--publisher--name structure"
+    )
+    console.print(
+        "[cyan]Custom Directory:[/cyan] Fine-tuned models or other custom formats"
+    )
+    console.print(
+        "[cyan]Ollama Models Directory:[/cyan] Ollama models directory with manifests and blobs"
+    )
+    console.print(
+        "[cyan]LoRA Adapters Directory:[/cyan] Directory containing LoRA adapter files"
+    )
+    console.print(
+        "[cyan]Auto-detect:[/cyan] Let the tool determine the type automatically"
+    )
+
+    path_type_choice = unified_prompt(
+        "path_type", "Choose Directory Type", DIRECTORY_TYPE_OPTIONS, allow_back=False
+    )
+
+    return path_type_choice
+
+
+def _validate_ollama_directory(path: Path, console: Console) -> bool:
+    """
+    Validate if a directory has Ollama structure and prompt user if not.
+
+    Args:
+        path: Directory path to validate
+        console: Rich console for output
+
+    Returns:
+        True if directory is valid or user wants to add anyway, False otherwise
+    """
+    has_manifests = (path / "manifests").exists()
+    has_blobs = (path / "blobs").exists()
+
+    if not (has_manifests and has_blobs):
+        console.print(
+            f"\n[yellow]Warning: Directory doesn't have standard Ollama structure[/yellow]"
+        )
+        console.print(f"  Manifests directory: {'✓' if has_manifests else '✗'}")
+        console.print(f"  Blobs directory: {'✓' if has_blobs else '✗'}")
+        console.print("\nAdd it anyway? (y/n): ", end="")
+        if input().lower() != "y":
+            console.print("[yellow]Cancelled[/yellow]")
+            return False
+
+    return True
+
+
+def _add_directory_with_type(
+    config_manager: ConfigManager,
+    path: Path,
+    path_type: str,
+    path_type_choice: str,
+    console: Console,
+) -> None:
+    """
+    Add a directory to configuration based on its type.
+
+    Args:
+        config_manager: ConfigManager instance
+        path: Directory path to add
+        path_type: Internal type identifier (from TYPE_MAPPING values)
+        path_type_choice: Display name of type (from TYPE_MAPPING keys)
+        console: Rich console for output
+    """
+    # Special handling for Ollama directories
+    if path_type == "ollama":
+        if not _validate_ollama_directory(path, console):
+            input("Press Enter to continue...")
+            return
+
+        # Add to Ollama directories
+        if config_manager.add_ollama_directory(str(path)):
+            console.print(f"\n[green]✓ Added Ollama directory: {path}[/green]")
+        else:
+            console.print(
+                f"\n[yellow]Ollama directory already configured: {path}[/yellow]"
+            )
+    else:
+        # Check if it contains assets based on type
+        if not config_manager.validate_directory(str(path)):
+            console.print(
+                f"\n[yellow]Warning: Directory doesn't appear to contain {path_type_choice.lower()} assets[/yellow]"
+            )
+            console.print("Add it anyway? (y/n): ", end="")
+            if input().lower() != "y":
+                console.print("[yellow]Cancelled[/yellow]")
+                input("Press Enter to continue...")
+                return
+
+        # Add directory with type
+        if config_manager.add_directory(str(path), path_type):
+            console.print(
+                f"\n[green]✓ Added {path_type_choice.lower()}: {path}[/green]"
+            )
+        else:
+            console.print(f"\n[yellow]Directory already configured: {path}[/yellow]")
+
+    input("Press Enter to continue...")
+
 
 def manage_directories() -> None:
     """
@@ -37,16 +169,30 @@ def manage_directories() -> None:
             config = config_manager.load_config()
             custom_dirs = config.get("custom_directories", [])
             include_default = config.get("include_default_cache", True)
+            scan_ollama = config.get("scan_ollama", False)
+            ollama_dirs = config.get("ollama_directories", [])
 
             # Create status display
             console.print("\n[bold cyan]Cache Directory Configuration[/bold cyan]")
 
             # Show default cache status
-            default_status = "Enabled" if include_default else "Disabled"
-            console.print(f"\nDefault HuggingFace Cache: {default_status}")
+            default_status = (
+                "[green]Enabled[/green]" if include_default else "[red]Disabled[/red]"
+            )
+            console.print(f"\n[bold]Default HuggingFace Cache:[/bold] {default_status}")
             if include_default:
-                console.print("  ~/.cache/huggingface/hub")
-                console.print("  ~/.cache/huggingface/datasets")
+                console.print("  • ~/.cache/huggingface/hub")
+                console.print("  • ~/.cache/huggingface/datasets")
+
+            # Show Ollama scanning status
+            ollama_status = (
+                "[green]Enabled[/green]" if scan_ollama else "[red]Disabled[/red]"
+            )
+            console.print(f"\n[bold]Default Ollama Scanning:[/bold] {ollama_status}")
+            if scan_ollama:
+                console.print("  • ~/.ollama/models")
+                console.print("  • /usr/share/ollama/.ollama/models")
+                console.print("  • /var/lib/ollama/.ollama/models")
 
             # Show custom directories
             if custom_dirs:
@@ -56,7 +202,7 @@ def manage_directories() -> None:
                         # Legacy format
                         dir_path = dir_entry
                         dir_type = "legacy"
-                        exists = "✅" if Path(dir_path).exists() else "❌"
+                        exists = "✓" if Path(dir_path).exists() else "✗"
                         console.print(
                             f"  {i}. {exists} [dim]({dir_type})[/dim] {dir_path}"
                         )
@@ -64,19 +210,27 @@ def manage_directories() -> None:
                         # New format with type
                         dir_path = dir_entry.get("path", "unknown")
                         dir_type = dir_entry.get("type", "custom")
-                        exists = "✅" if Path(dir_path).exists() else "❌"
+                        exists = "✓" if Path(dir_path).exists() else "✗"
                         console.print(
                             f"  {i}. {exists} [cyan]({dir_type})[/cyan] {dir_path}"
                         )
             else:
                 console.print("\n[dim]No custom directories configured[/dim]")
 
+            # Show Ollama directories
+            if ollama_dirs:
+                console.print("\n[bold]Ollama Directories:[/bold]")
+                for i, dir_path in enumerate(ollama_dirs, 1):
+                    exists = "✓" if Path(dir_path).exists() else "✗"
+                    console.print(f"  {i}. {exists} [cyan](ollama)[/cyan] {dir_path}")
+
             # Show menu options
             options = [
                 "Add Directory Path",
                 "Add Current Directory",
                 "Remove Directory",
-                "Toggle Default Cache",
+                "Toggle Default HuggingFace Cache",
+                "Toggle Ollama Scanning",
                 "Scan Directory (Test)",
             ]
 
@@ -92,9 +246,11 @@ def manage_directories() -> None:
             elif choice == "Add Current Directory":
                 add_current_directory(config_manager)
             elif choice == "Remove Directory":
-                remove_directory(config_manager, custom_dirs)
-            elif choice == "Toggle Default Cache":
+                remove_directory(config_manager, custom_dirs, ollama_dirs)
+            elif choice == "Toggle Default HuggingFace Cache":
                 toggle_default_cache(config_manager, include_default)
+            elif choice == "Toggle Ollama Scanning":
+                toggle_ollama_scan(config_manager, scan_ollama)
             elif choice == "Scan Directory (Test)":
                 test_directory_scan(config_manager)
 
@@ -137,53 +293,19 @@ def add_directory_path(config_manager: ConfigManager) -> None:
             input("Press Enter to continue...")
             return
 
-        # Ask user to choose path type
-        console.print("\n[bold]Select Directory Type:[/bold]")
-        console.print(
-            "[cyan]HuggingFace Cache:[/cyan] Standard HF cache with models--publisher--name structure"
-        )
-        console.print(
-            "[cyan]Custom Directory:[/cyan] LoRA adapters, fine-tuned models, or other custom formats"
-        )
-        console.print(
-            "[cyan]Auto-detect:[/cyan] Let the tool determine the type automatically"
-        )
-
-        path_type_options = ["HuggingFace Cache", "Custom Directory", "Auto-detect"]
-
-        path_type_choice = unified_prompt(
-            "path_type", "Choose Directory Type", path_type_options, allow_back=False
-        )
-
+        # Get directory type choice
+        path_type_choice = _get_directory_type_choice(console)
         if not path_type_choice:
             console.print("[yellow]Cancelled[/yellow]")
             return
 
         # Map choice to internal type
-        type_mapping = {
-            "HuggingFace Cache": "huggingface",
-            "Custom Directory": "custom",
-            "Auto-detect": "auto",
-        }
-        path_type = type_mapping[path_type_choice]
-
-        # Check if it contains assets based on type
-        if not config_manager.validate_directory(str(path)):
-            console.print(
-                f"[yellow]Warning: Directory doesn't appear to contain {path_type_choice.lower()} assets[/yellow]"
-            )
-            console.print("Add it anyway? (y/n): ", end="")
-            if input().lower() != "y":
-                console.print("[yellow]Cancelled[/yellow]")
-                return
+        path_type = TYPE_MAPPING[path_type_choice]
 
         # Add directory with type
-        if config_manager.add_directory(str(path), path_type):
-            console.print(f"[green]✅ Added {path_type_choice.lower()}: {path}[/green]")
-        else:
-            console.print(f"[yellow]Directory already configured: {path}[/yellow]")
-
-        input("Press Enter to continue...")
+        _add_directory_with_type(
+            config_manager, path, path_type, path_type_choice, console
+        )
 
     except Exception as e:
         logger.error(f"Error adding directory: {e}")
@@ -196,61 +318,24 @@ def add_current_directory(config_manager: ConfigManager) -> None:
     console = Console()
 
     try:
-        current_dir = os.getcwd()
+        current_dir = Path.cwd()
         console.print(f"\n[bold]Add Current Directory[/bold]")
         console.print(f"Current directory: [cyan]{current_dir}[/cyan]")
 
-        # Ask user to choose path type
-        console.print("\n[bold]Select Directory Type:[/bold]")
-        console.print(
-            "[cyan]HuggingFace Cache:[/cyan] Standard HF cache with models--publisher--name structure"
-        )
-        console.print(
-            "[cyan]Custom Directory:[/cyan] LoRA adapters, fine-tuned models, or other custom formats"
-        )
-        console.print(
-            "[cyan]Auto-detect:[/cyan] Let the tool determine the type automatically"
-        )
-
-        path_type_options = ["HuggingFace Cache", "Custom Directory", "Auto-detect"]
-
-        path_type_choice = unified_prompt(
-            "path_type", "Choose Directory Type", path_type_options, allow_back=False
-        )
-
+        # Get directory type choice
+        path_type_choice = _get_directory_type_choice(console)
         if not path_type_choice:
             console.print("[yellow]Cancelled[/yellow]")
             input("Press Enter to continue...")
             return
 
         # Map choice to internal type
-        type_mapping = {
-            "HuggingFace Cache": "huggingface",
-            "Custom Directory": "custom",
-            "Auto-detect": "auto",
-        }
-        path_type = type_mapping[path_type_choice]
-
-        # Check if it contains assets
-        if not config_manager.validate_directory(current_dir):
-            console.print(
-                f"\n[yellow]Warning: Current directory doesn't appear to contain {path_type_choice.lower()} assets[/yellow]"
-            )
-            console.print("Add it anyway? (y/n): ", end="")
-            if input().lower() != "y":
-                console.print("[yellow]Cancelled[/yellow]")
-                input("Press Enter to continue...")
-                return
+        path_type = TYPE_MAPPING[path_type_choice]
 
         # Add directory with type
-        if config_manager.add_directory(current_dir, path_type):
-            console.print(
-                f"\n[green]Added current directory as {path_type_choice.lower()}[/green]"
-            )
-        else:
-            console.print(f"\n[yellow]Current directory already configured[/yellow]")
-
-        input("Press Enter to continue...")
+        _add_directory_with_type(
+            config_manager, current_dir, path_type, path_type_choice, console
+        )
 
     except Exception as e:
         logger.error(f"Error adding current directory: {e}")
@@ -258,26 +343,44 @@ def add_current_directory(config_manager: ConfigManager) -> None:
         input("Press Enter to continue...")
 
 
-def remove_directory(config_manager: ConfigManager, custom_dirs: List[Dict]) -> None:
+def remove_directory(
+    config_manager: ConfigManager, custom_dirs: List[Dict], ollama_dirs: List[str]
+) -> None:
     """Remove a directory from configuration."""
     console = Console()
 
-    if not custom_dirs:
-        console.print("\n[yellow]No custom directories to remove[/yellow]")
+    # Combine all directories for removal
+    all_dirs = []
+
+    # Add custom directories
+    for dir_entry in custom_dirs:
+        if isinstance(dir_entry, str):
+            all_dirs.append({"path": dir_entry, "type": "custom", "source": "custom"})
+        else:
+            all_dirs.append(
+                {
+                    "path": dir_entry.get("path", ""),
+                    "type": dir_entry.get("type", "custom"),
+                    "source": "custom",
+                }
+            )
+
+    # Add Ollama directories
+    for dir_path in ollama_dirs:
+        all_dirs.append({"path": dir_path, "type": "ollama", "source": "ollama"})
+
+    if not all_dirs:
+        console.print("\n[yellow]No directories to remove[/yellow]")
         input("Press Enter to continue...")
         return
 
     try:
         # Create choices with directory paths and types
         choices = []
-        for i, dir_entry in enumerate(custom_dirs, 1):
-            # Handle both old (string) and new (dict) formats
-            if isinstance(dir_entry, str):
-                choices.append(f"{i}. {dir_entry}")
-            else:
-                path = dir_entry.get("path", "Unknown")
-                dir_type = dir_entry.get("type", "unknown")
-                choices.append(f"{i}. {path} [{dir_type}]")
+        for i, dir_info in enumerate(all_dirs, 1):
+            path = dir_info["path"]
+            dir_type = dir_info["type"]
+            choices.append(f"{i}. [{dir_type}] {path}")
 
         choices.append("Cancel")
 
@@ -290,18 +393,27 @@ def remove_directory(config_manager: ConfigManager, custom_dirs: List[Dict]) -> 
 
         # Extract index from choice
         idx = int(choice.split(".")[0]) - 1
-        dir_entry = custom_dirs[idx]
+        dir_to_remove = all_dirs[idx]
 
-        # Get path from entry (handle both old and new formats)
-        if isinstance(dir_entry, str):
-            dir_to_remove = dir_entry
+        # Remove based on source type
+        if dir_to_remove["source"] == "ollama":
+            if config_manager.remove_ollama_directory(dir_to_remove["path"]):
+                console.print(
+                    f"\n[green]Removed Ollama directory: {dir_to_remove['path']}[/green]"
+                )
+            else:
+                console.print(
+                    f"\n[red]Failed to remove directory: {dir_to_remove['path']}[/red]"
+                )
         else:
-            dir_to_remove = dir_entry.get("path", "")
-
-        if config_manager.remove_directory(dir_to_remove):
-            console.print(f"\n[green]Removed directory: {dir_to_remove}[/green]")
-        else:
-            console.print(f"\n[red]Failed to remove directory: {dir_to_remove}[/red]")
+            if config_manager.remove_directory(dir_to_remove["path"]):
+                console.print(
+                    f"\n[green]Removed directory: {dir_to_remove['path']}[/green]"
+                )
+            else:
+                console.print(
+                    f"\n[red]Failed to remove directory: {dir_to_remove['path']}[/red]"
+                )
 
         input("Press Enter to continue...")
 
@@ -323,6 +435,35 @@ def toggle_default_cache(config_manager: ConfigManager, current_state: bool) -> 
 
     except Exception as e:
         logger.error(f"Error toggling default cache: {e}")
+        console.print(f"[red]Error: {e}[/red]")
+        input("Press Enter to continue...")
+
+
+def toggle_ollama_scan(config_manager: ConfigManager, current_state: bool) -> None:
+    """Toggle Ollama scanning on/off."""
+    console = Console()
+
+    try:
+        new_state = config_manager.toggle_ollama_scanning()
+        status = "enabled" if new_state else "disabled"
+        console.print(f"\n[green]Ollama scanning {status}[/green]")
+
+        if new_state:
+            console.print(
+                "[dim]Default Ollama locations will now be scanned for models[/dim]"
+            )
+        else:
+            console.print(
+                "[dim]Default Ollama locations will no longer be scanned[/dim]"
+            )
+            console.print(
+                "[dim]Custom Ollama directories will still be scanned if configured[/dim]"
+            )
+
+        input("\nPress Enter to continue...")
+
+    except Exception as e:
+        logger.error(f"Error toggling Ollama scanning: {e}")
         console.print(f"[red]Error: {e}[/red]")
         input("Press Enter to continue...")
 
@@ -399,7 +540,7 @@ def show_help() -> None:
         print("  ↑/↓ arrows: Navigate menu options")
         print("  Enter: Select current option")
         print("  Select '← Back' to go to previous menu")
-        print("  Select '→ Config' for settings and directory management")
+        print("  Select 'Settings' for settings and directory management")
         print("  Select 'Main Menu' to return to main menu from anywhere")
         print("  Select 'Exit' or Ctrl+C to quit")
 
@@ -529,14 +670,14 @@ def unified_prompt(
     enhanced_choices = [
         c
         for c in enhanced_choices
-        if c not in ["Back", "Help", "Quit", "← Back", "→ Config", "Main Menu", "Exit"]
+        if c not in ["Back", "Help", "Quit", "← Back", "Settings", "Main Menu", "Exit"]
     ]
 
     # Add separator and navigation options
     enhanced_choices.append("─────")
     if allow_back:
         enhanced_choices.append("← Back")
-    enhanced_choices.append("→ Config")
+    enhanced_choices.append("Settings")
     enhanced_choices.append("Main Menu")
     enhanced_choices.append("Exit")
 
@@ -578,7 +719,7 @@ def unified_prompt(
             # Handle special navigation choices
             if result == "← Back":
                 return "BACK"
-            elif result == "→ Config":
+            elif result == "Settings":
                 config_result = show_config()
                 if config_result:  # If a sort option was selected
                     return config_result

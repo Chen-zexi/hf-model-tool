@@ -28,6 +28,48 @@ logger = logging.getLogger(__name__)
 BACK_CHOICE = "Back"
 
 
+def format_path_info(path_str: str, show_last_n: int = 20) -> str:
+    """
+    Format path strings to show meaningful information.
+
+    Args:
+        path_str: Full path string to format
+        show_last_n: Number of characters to show from the end for long paths
+
+    Returns:
+        Formatted path string with meaningful prefix and suffix
+    """
+    if "/.ollama/" in path_str:
+        if "/home/" in path_str:
+            prefix = "user: ~/.ollama"
+        elif "/usr/share/" in path_str:
+            prefix = "system: /usr/share/ollama"
+        else:
+            prefix = "ollama"
+        # Show last part of path for blob identification
+        suffix = path_str.split("/")[-1][:show_last_n]
+        return f"{prefix}/.../{suffix}"
+    elif "/.cache/huggingface/" in path_str:
+        # Extract model info from HF cache path
+        if "/models--" in path_str:
+            parts = path_str.split("/models--")
+            if len(parts) > 1:
+                model_info = parts[1].split("/")[0].replace("--", "/")
+                return f"HF cache: {model_info[:30]}"
+        return "HF cache"
+    elif "/models--" in path_str:
+        # Handle other HF model paths
+        parts = path_str.split("/models--")
+        if len(parts) > 1:
+            model_info = parts[1].split("/")[0].replace("--", "/")
+            return f"HF: {model_info[:30]}"
+
+    # Default: show beginning and end
+    if len(path_str) > 40:
+        return path_str[:15] + "..." + path_str[-20:]
+    return path_str
+
+
 def print_items(items: List[Dict[str, Any]], sort_by: str = "size") -> None:
     """
     Display a formatted table of assets grouped by category and publisher.
@@ -81,6 +123,8 @@ def print_items(items: List[Dict[str, Any]], sort_by: str = "size") -> None:
                 "datasets": "HUGGINGFACE DATASETS",
                 "lora_adapters": "LORA ADAPTERS",
                 "custom_models": "CUSTOM MODELS",
+                "ollama_models": "OLLAMA MODELS",
+                "gguf_models": "GGUF MODELS",
                 "unknown_models": "UNKNOWN MODELS",
                 "unknown": "UNKNOWN ASSETS",
             }
@@ -184,10 +228,13 @@ def delete_assets_workflow(items: List[Dict[str, Any]]) -> Optional[str]:
 
             while True:  # Item loop
                 items_to_delete_choices = grouped[selected_category][selected_publisher]
-                choices = [
-                    f"{item['display_name']} ({item['size']/1e9:.2f} GB)"
-                    for item in items_to_delete_choices
-                ]
+                choices = []
+                for item in items_to_delete_choices:
+                    path_info = format_path_info(item["path"])
+                    date_str = item["date"].strftime("%Y-%m-%d")
+                    choices.append(
+                        f"{item['display_name']} ({item['size']/1e9:.2f} GB) [{path_info}] [{date_str}]"
+                    )
                 questions = [
                     inquirer.Checkbox(
                         "selected_items",
@@ -220,21 +267,73 @@ def delete_assets_workflow(items: List[Dict[str, Any]]) -> Optional[str]:
                     default=False,
                 )
                 if confirm:
+                    failed_deletions = []
+                    successful_deletions = []
+
                     for choice_str in answers["selected_items"]:
-                        # Extract display name by removing the size info in parentheses at the end
-                        # Format: "display_name (size GB)" -> "display_name"
-                        if " (" in choice_str and choice_str.endswith(" GB)"):
-                            # Remove the last parentheses group (size info)
-                            item_name_to_find = choice_str.rsplit(" (", 1)[0]
+                        # Extract display name by removing the size, path, and date info
+                        # New format: "display_name (size GB) [path] [date]"
+                        # First remove the date part (last bracketed section)
+                        if choice_str.count("[") >= 2 and choice_str.endswith("]"):
+                            # Remove the last bracketed section (date)
+                            choice_without_date = choice_str.rsplit(" [", 1)[0]
+                            # Remove the path part (now the last bracketed section)
+                            if (
+                                " [" in choice_without_date
+                                and choice_without_date.endswith("]")
+                            ):
+                                choice_without_path = choice_without_date.rsplit(
+                                    " [", 1
+                                )[0]
+                            else:
+                                choice_without_path = choice_without_date
+                        elif " [" in choice_str and choice_str.endswith("]"):
+                            # Old format compatibility
+                            choice_without_path = choice_str.rsplit(" [", 1)[0]
                         else:
-                            # Fallback: use the full string for exact matching
-                            item_name_to_find = choice_str
+                            choice_without_path = choice_str
+
+                        # Then extract display name by removing size info
+                        if " (" in choice_without_path and "GB)" in choice_without_path:
+                            item_name_to_find = choice_without_path.rsplit(" (", 1)[0]
+                        else:
+                            # Fallback: use the processed string
+                            item_name_to_find = choice_without_path
 
                         for item in items_to_delete_choices:
                             if item["display_name"] == item_name_to_find:
-                                shutil.rmtree(item["path"])
-                                print(f"Removed: {item['name']}")
+                                path = Path(item["path"])
+                                try:
+                                    if path.is_dir():
+                                        shutil.rmtree(path)
+                                    else:
+                                        path.unlink()
+                                    successful_deletions.append(item["name"])
+                                    print(f"✓ Removed: {item['name']}")
+                                except PermissionError:
+                                    failed_deletions.append((item["name"], str(path)))
+                                    print(f"✗ Permission denied: {item['name']}")
+                                    if "/usr/share/" in str(path) or "/opt/" in str(
+                                        path
+                                    ):
+                                        print(
+                                            f"  Hint: Try with sudo: sudo rm -rf '{path}'"
+                                        )
+                                except Exception as e:
+                                    failed_deletions.append((item["name"], str(e)))
+                                    print(f"✗ Error removing {item['name']}: {e}")
                                 break
+
+                    # Summary
+                    print("")  # Empty line for readability
+                    if failed_deletions:
+                        print(
+                            f"⚠️  {len(failed_deletions)} deletion(s) failed due to permissions or errors"
+                        )
+                    if successful_deletions:
+                        print(
+                            f"✓ {len(successful_deletions)} item(s) successfully deleted"
+                        )
                 else:
                     print("Deletion cancelled.")
                 break  # Exit item loop after action
@@ -253,10 +352,12 @@ def deduplicate_assets_workflow(items: List[Dict[str, Any]]) -> Optional[str]:
         dup_items = [item for item in items if item["name"] in dup_set]
         dup_items.sort(key=lambda x: x["date"], reverse=True)
 
-        choices = [
-            f"{i['name']} ({i['date'].strftime('%Y-%m-%d')}, {i['size']/1e9:.2f} GB)"
-            for i in dup_items
-        ]
+        choices = []
+        for i in dup_items:
+            path_info = format_path_info(i["path"])
+            choices.append(
+                f"{i['name']} ({i['date'].strftime('%Y-%m-%d')}, {i['size']/1e9:.2f} GB) [{path_info}]"
+            )
         keep_choice = unified_prompt(
             "item_to_keep",
             f"Select version of '{dup_items[0]['display_name']}' to KEEP (newest is default)",
@@ -268,25 +369,59 @@ def deduplicate_assets_workflow(items: List[Dict[str, Any]]) -> Optional[str]:
         elif keep_choice == "MAIN_MENU":
             return "MAIN_MENU"
 
-        # Extract item name by removing the date and size info in parentheses at the end
-        # Format: "name (date, size GB)" -> "name"
-        item_to_keep_name = keep_choice.split(" (")[0]
-        items_to_delete = [
-            item for item in dup_items if item["name"] != item_to_keep_name
-        ]
+        # Extract item to keep by matching the full choice string
+        # New format: "name (date, size GB) [path]"
+        item_to_keep = None
+        for idx, choice in enumerate(choices):
+            if choice == keep_choice:
+                item_to_keep = dup_items[idx]
+                break
+
+        if not item_to_keep:
+            print("Error: Could not identify item to keep")
+            continue
+
+        items_to_delete = [item for item in dup_items if item != item_to_keep]
 
         print("The following assets will be deleted:")
         for item in items_to_delete:
-            print(f"- {item['name']}")
+            print(f"- {item['name']} at {item['path']}")
 
         confirm = inquirer.confirm(
             f"Are you sure you want to delete {len(items_to_delete)} duplicate(s)?",
             default=False,
         )
         if confirm:
+            failed_deletions = []
+            successful_deletions = []
+
             for item in items_to_delete:
-                shutil.rmtree(item["path"])
-                print(f"Removed duplicate: {item['name']}")
+                path = Path(item["path"])
+                try:
+                    if path.is_dir():
+                        shutil.rmtree(path)
+                    else:
+                        path.unlink()
+                    successful_deletions.append(item["name"])
+                    print(f"✓ Removed duplicate: {item['name']}")
+                except PermissionError:
+                    failed_deletions.append((item["name"], str(path)))
+                    print(f"✗ Permission denied: {item['name']}")
+                    if "/usr/share/" in str(path) or "/opt/" in str(path):
+                        print(f"  Hint: Try with sudo: sudo rm -rf '{path}'")
+                except Exception as e:
+                    failed_deletions.append((item["name"], str(e)))
+                    print(f"✗ Error removing duplicate {item['name']}: {e}")
+
+            # Summary
+            if failed_deletions:
+                print(
+                    f"\n⚠️  {len(failed_deletions)} duplicate(s) could not be deleted due to permissions"
+                )
+            if successful_deletions:
+                print(
+                    f"✓ {len(successful_deletions)} duplicate(s) successfully removed"
+                )
         else:
             print("Deduplication for this set cancelled.")
     print("Deduplication complete.")

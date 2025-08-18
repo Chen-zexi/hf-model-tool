@@ -90,6 +90,8 @@ def group_and_identify_duplicates(
         "datasets": defaultdict(list),
         "lora_adapters": defaultdict(list),
         "custom_models": defaultdict(list),
+        "ollama_models": defaultdict(list),
+        "gguf_models": defaultdict(list),
         "unknown_models": defaultdict(list),
         "unknown": defaultdict(list),
     }
@@ -198,6 +200,16 @@ def _categorize_asset(item: Dict[str, Any]) -> Tuple[str, str]:
             path = Path(item.get("path", ""))
             publisher = path.parent.name if path.parent.name else "custom"
         return "custom_models", publisher
+
+    elif asset_type == "ollama_model":
+        # For Ollama models, use "ollama" as the publisher
+        publisher = item.get("publisher", "ollama")
+        return "ollama_models", publisher
+
+    elif asset_type == "gguf_model":
+        # For GGUF models, use publisher or default to "gguf"
+        publisher = item.get("publisher", "gguf")
+        return "gguf_models", publisher
 
     elif asset_type == "unknown_model":
         # For unknown models, use directory parent as publisher

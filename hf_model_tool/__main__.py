@@ -279,9 +279,9 @@ def show_welcome_screen() -> None:
                 dir_count = len(unique_dirs)
 
                 if dir_count > 1:
-                    status = f"✅ Found {asset_count} assets using {total_size:.1f} GB across {dir_count} directories"
+                    status = f"✓ Found {asset_count} assets using {total_size:.1f} GB across {dir_count} directories"
                 else:
-                    status = f"✅ Found {asset_count} assets using {total_size:.1f} GB"
+                    status = f"✓ Found {asset_count} assets using {total_size:.1f} GB"
                 status_style = "bold green"
                 logger.info(
                     f"Cache scan successful: {asset_count} assets, {total_size:.1f} GB"
@@ -300,7 +300,7 @@ def show_welcome_screen() -> None:
         features.append("🎯 Features:\n", style="bold white")
         features.append("  • ", style="cyan")
         features.append("Smart Asset Detection", style="white")
-        features.append(" - LLM, LoRA Adapters, and Datasets\n", style="dim white")
+        features.append(" - LLM, LoRA Adapters, Ollama, and Datasets\n", style="dim white")
         features.append("  • ", style="cyan")
         features.append("Asset Management", style="white")
         features.append(
@@ -318,14 +318,11 @@ def show_welcome_screen() -> None:
         help_text.append(
             "  Navigate with ↑/↓ arrows • Press Enter to select\n", style="dim white"
         )
-        help_text.append("  Use '", style="dim white")
-        help_text.append("← Back", style="cyan")
-        help_text.append("' and '", style="dim white")
-        help_text.append("→ Config", style="cyan")
-        help_text.append("' for navigation\n", style="dim white")
         help_text.append(
-            "  Add directories via Config > Manage Directories\n", style="dim white"
+            "  Add directories via Settings > Manage Directories\n", style="dim white"
         )
+        help_text.append("  Tip: Customize display preferences in ", style="dim white")
+        help_text.append("Settings\n", style="cyan")
 
         # Display the welcome screen with centered logo
         centered_logo = Align.center(logo_text)

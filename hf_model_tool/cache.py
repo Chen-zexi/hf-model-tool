@@ -14,6 +14,7 @@ from pathlib import Path
 from .config import ConfigManager
 from .asset_detector import AssetDetector
 from .manifest import ManifestHandler
+from .ollama import get_ollama_items
 
 logger = logging.getLogger(__name__)
 
@@ -403,7 +404,7 @@ def get_items(
 
     Args:
         cache_dir: Path to directory containing ML assets
-        path_type: Type of path - "huggingface", "custom", or "auto"
+        path_type: Type of path - "huggingface", "custom", "ollama", "lora", or "auto"
 
     Returns:
         List of dictionaries containing asset metadata
@@ -412,10 +413,22 @@ def get_items(
         return get_huggingface_items(cache_dir)
     elif path_type == "custom":
         return get_custom_items(cache_dir)
+    elif path_type == "ollama":
+        return get_ollama_items(cache_dir)
+    elif path_type == "lora":
+        # LoRA directories are handled as custom for now
+        return get_custom_items(cache_dir)
     else:  # auto-detect
         cache_path = Path(cache_dir)
+        # Check if it looks like an Ollama directory
+        if (
+            cache_path.name == "models"
+            and (cache_path / "manifests").exists()
+            and (cache_path / "blobs").exists()
+        ):
+            return get_ollama_items(cache_dir)
         # Check if it looks like a HuggingFace cache directory
-        if _is_huggingface_cache(cache_path):
+        elif _is_huggingface_cache(cache_path):
             return get_huggingface_items(cache_dir)
         else:
             return get_custom_items(cache_dir)
@@ -576,6 +589,9 @@ def scan_all_directories() -> List[Dict[str, Union[str, int, datetime]]]:
         except (OSError, PermissionError) as e:
             logger.warning(f"Failed to scan directory {directory}: {e}")
             continue
+
+    # Note: Ollama directories are already handled in the main loop above
+    # via get_items(directory, "ollama") when path_type is "ollama"
 
     logger.info(f"Found {len(all_items)} assets across all directories")
     return all_items

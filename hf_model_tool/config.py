@@ -36,6 +36,29 @@ class ConfigManager:
         self._ensure_config_dir()
         self._config_cache: Optional[Dict[str, Any]] = None
 
+    def _validate_directory_path(self, directory: str) -> Path:
+        """
+        Validate that a directory path exists and is a directory.
+
+        Args:
+            directory: Path string to validate
+
+        Returns:
+            Resolved Path object
+
+        Raises:
+            ValueError: If directory doesn't exist or is not a directory
+        """
+        directory_path = Path(directory).resolve()
+
+        if not directory_path.exists():
+            raise ValueError(f"Directory does not exist: {directory}")
+
+        if not directory_path.is_dir():
+            raise ValueError(f"Path is not a directory: {directory}")
+
+        return directory_path
+
     def _ensure_config_dir(self) -> None:
         """Create configuration directory if it doesn't exist."""
         try:
@@ -61,6 +84,8 @@ class ConfigManager:
         default_config = {
             "custom_directories": [],
             "include_default_cache": True,
+            "scan_ollama": False,  # Disabled by default - user must explicitly enable
+            "ollama_directories": [],  # Custom Ollama directories added by user
             "last_updated": datetime.now().isoformat(),
         }
 
@@ -112,7 +137,7 @@ class ConfigManager:
 
         Args:
             directory: Path to directory to add
-            path_type: Type of path - "huggingface", "custom", or "auto"
+            path_type: Type of path - "huggingface", "custom", "ollama", "lora", or "auto"
 
         Returns:
             True if directory was added, False if already exists
@@ -120,13 +145,7 @@ class ConfigManager:
         Raises:
             ValueError: If directory doesn't exist or is invalid
         """
-        directory_path = Path(directory).resolve()
-
-        if not directory_path.exists():
-            raise ValueError(f"Directory does not exist: {directory}")
-
-        if not directory_path.is_dir():
-            raise ValueError(f"Path is not a directory: {directory}")
+        directory_path = self._validate_directory_path(directory)
 
         config = self.load_config()
         custom_dirs = config.get("custom_directories", [])
@@ -277,6 +296,41 @@ class ConfigManager:
                 else:
                     logger.warning(f"Configured directory no longer exists: {dir_path}")
 
+        # Add Ollama directories if scanning is enabled
+        if config.get("scan_ollama", False):
+            # Add default Ollama directories
+            default_ollama_dirs = [
+                Path.home() / ".ollama" / "models",
+                Path("/usr/share/ollama/.ollama/models"),
+                Path("/var/lib/ollama/.ollama/models"),
+            ]
+
+            for ollama_dir in default_ollama_dirs:
+                if ollama_dir.exists():
+                    directories.append(
+                        {
+                            "path": str(ollama_dir),
+                            "type": "ollama",
+                            "source": "default_ollama",
+                        }
+                    )
+
+        # Add custom Ollama directories
+        ollama_dirs = config.get("ollama_directories", [])
+        for ollama_path in ollama_dirs:
+            if Path(ollama_path).exists():
+                directories.append(
+                    {
+                        "path": ollama_path,
+                        "type": "ollama",
+                        "source": "custom_ollama",
+                    }
+                )
+            else:
+                logger.warning(
+                    f"Configured Ollama directory no longer exists: {ollama_path}"
+                )
+
         return directories
 
     def toggle_default_cache(self) -> bool:
@@ -293,6 +347,107 @@ class ConfigManager:
 
         logger.info(f"Toggled default cache inclusion to: {not current_state}")
         return not current_state
+
+    def toggle_ollama_scanning(self) -> bool:
+        """
+        Toggle whether to scan default Ollama directories for models.
+
+        Returns:
+            New state of scan_ollama
+        """
+        config = self.load_config()
+        current_state = config.get("scan_ollama", False)
+        config["scan_ollama"] = not current_state
+        self.save_config(config)
+
+        logger.info(f"Toggled Ollama scanning to: {not current_state}")
+        return not current_state
+
+    def add_ollama_directory(self, directory: str) -> bool:
+        """
+        Add a custom Ollama directory to configuration.
+
+        Args:
+            directory: Path to Ollama-style directory to add
+
+        Returns:
+            True if directory was added, False if already exists
+
+        Raises:
+            ValueError: If directory doesn't exist or is invalid
+        """
+        directory_path = self._validate_directory_path(directory)
+
+        # Check if it has Ollama structure (manifests and blobs directories)
+        if (
+            not (directory_path / "manifests").exists()
+            or not (directory_path / "blobs").exists()
+        ):
+            logger.warning(
+                f"Directory doesn't appear to have Ollama structure: {directory}"
+            )
+
+        config = self.load_config()
+        ollama_dirs = config.get("ollama_directories", [])
+
+        # Convert to string for JSON serialization
+        directory_str = str(directory_path)
+
+        # Check if directory already exists
+        if directory_str in ollama_dirs:
+            logger.info(f"Ollama directory already in config: {directory_str}")
+            return False
+
+        ollama_dirs.append(directory_str)
+        config["ollama_directories"] = ollama_dirs
+        self.save_config(config)
+
+        logger.info(f"Added Ollama directory to config: {directory_str}")
+        return True
+
+    def remove_ollama_directory(self, directory: str) -> bool:
+        """
+        Remove a custom Ollama directory from configuration.
+
+        Args:
+            directory: Path to Ollama directory to remove
+
+        Returns:
+            True if directory was removed, False if not found
+        """
+        config = self.load_config()
+        ollama_dirs = config.get("ollama_directories", [])
+
+        # Normalize path for comparison
+        directory_path = str(Path(directory).resolve())
+
+        if directory_path in ollama_dirs:
+            ollama_dirs.remove(directory_path)
+            config["ollama_directories"] = ollama_dirs
+            self.save_config(config)
+            logger.info(f"Removed Ollama directory from config: {directory_path}")
+            return True
+
+        # Also check without normalization
+        if directory in ollama_dirs:
+            ollama_dirs.remove(directory)
+            config["ollama_directories"] = ollama_dirs
+            self.save_config(config)
+            logger.info(f"Removed Ollama directory from config: {directory}")
+            return True
+
+        logger.info(f"Ollama directory not in config: {directory}")
+        return False
+
+    def get_ollama_directories(self) -> List[str]:
+        """
+        Get all configured Ollama directories (custom only, not defaults).
+
+        Returns:
+            List of Ollama directory paths
+        """
+        config = self.load_config()
+        return config.get("ollama_directories", [])
 
     def _offer_manifest_generation(self, directory: Path) -> bool:
         """

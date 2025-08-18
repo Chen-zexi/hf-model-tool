@@ -48,7 +48,13 @@ def get_version():
 __version__ = get_version()
 
 # Import public API functions
-from .api import get_downloaded_models, get_model_info, HFModelAPI
+from .api import (
+    get_downloaded_models,
+    get_model_info,
+    HFModelAPI,
+    get_ollama_models,
+    get_ollama_model_path,
+)
 from .registry import ModelRegistry, get_registry
 from .lora_manager import LoRAManager, get_lora_manager, LoRAProfile
 
@@ -58,6 +64,8 @@ __all__ = [
     "get_downloaded_models",
     "get_model_info",
     "HFModelAPI",
+    "get_ollama_models",
+    "get_ollama_model_path",
     "ModelRegistry",
     "get_registry",
     "LoRAManager",

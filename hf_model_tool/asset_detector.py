@@ -31,6 +31,12 @@ class AssetDetector:
             "alternatives": [".bin", ".pt", ".pth"],
         }
 
+        # Add GGUF pattern for Ollama/llama.cpp models
+        self.gguf_patterns = {
+            "extensions": [".gguf", ".GGUF"],
+            "magic_bytes": b"GGUF",
+        }
+
         self.dataset_patterns = {
             "readme": "README.md",
             "dataset_info": "dataset_info.json",
@@ -221,6 +227,49 @@ class AssetDetector:
         self, directory: Path, root_file_names: List[str], relative_paths: List[Path]
     ) -> Optional[Dict[str, Any]]:
         """Detect custom or merged models - checks only root-level files."""
+        # Check for GGUF models first
+        has_gguf = any(
+            any(
+                f.lower().endswith(ext.lower())
+                for ext in self.gguf_patterns["extensions"]
+            )
+            for f in root_file_names
+        )
+
+        if has_gguf:
+            # Find the GGUF file
+            gguf_file = None
+            for f in root_file_names:
+                if any(
+                    f.lower().endswith(ext.lower())
+                    for ext in self.gguf_patterns["extensions"]
+                ):
+                    gguf_file = directory / f
+                    break
+
+            # Verify it's actually a GGUF file by checking magic bytes
+            if gguf_file and self._is_gguf_file(gguf_file):
+                metadata = {
+                    "format": "gguf",
+                    "quantization": "gguf",
+                    "experimental_warning": "GGUF support in vLLM is experimental",
+                }
+                return {
+                    "type": "gguf_model",
+                    "subtype": "quantized",
+                    "metadata": metadata,
+                    "files": [
+                        f
+                        for f in root_file_names
+                        if any(
+                            f.lower().endswith(ext.lower())
+                            for ext in self.gguf_patterns["extensions"]
+                        )
+                    ],
+                    "display_name": self._generate_display_name(directory, "GGUF"),
+                    "path": str(gguf_file),  # Direct path to GGUF file
+                }
+
         # Only check for config.json and model files at root level
         has_config = self.model_patterns["config"] in root_file_names
         has_safetensors = any(
@@ -401,6 +450,16 @@ class AssetDetector:
                 logger.warning(f"Error reading model config: {e}")
 
         return metadata
+
+    def _is_gguf_file(self, file_path: Path) -> bool:
+        """Check if a file is in GGUF format by reading its magic header."""
+        try:
+            with open(file_path, "rb") as f:
+                # GGUF files start with magic bytes "GGUF"
+                magic = f.read(4)
+                return magic == self.gguf_patterns["magic_bytes"]
+        except (OSError, PermissionError):
+            return False
 
     def _generate_display_name(self, directory: Path, asset_type: str) -> str:
         """Generate a user-friendly display name for the asset."""

@@ -15,13 +15,54 @@ from .config import ConfigManager
 from .asset_detector import AssetDetector
 from .registry import get_registry, ModelRegistry
 from .manifest import ManifestHandler
+from .ollama import get_ollama_items, get_ollama_model_info
 
 logger = logging.getLogger(__name__)
+
+
+def _should_include_asset(
+    item: Dict[str, Any],
+    include_custom_models: bool,
+    include_lora_adapters: bool,
+    include_ollama: bool,
+) -> bool:
+    """
+    Determine if an asset should be included based on filter criteria.
+
+    Args:
+        item: Asset dictionary from scanning
+        include_custom_models: Whether to include custom/merged models
+        include_lora_adapters: Whether to include LoRA adapters
+        include_ollama: Whether to include Ollama/GGUF models
+
+    Returns:
+        True if asset should be included, False otherwise
+    """
+    asset_type = item.get("type", "unknown")
+
+    # Always skip datasets and unknown types
+    if asset_type in ["dataset", "unknown"]:
+        return False
+
+    # Check LoRA adapter filter
+    if asset_type == "lora_adapter" and not include_lora_adapters:
+        return False
+
+    # Check custom model filter
+    if asset_type in ["custom_model", "unknown_model"] and not include_custom_models:
+        return False
+
+    # Check Ollama/GGUF model filter
+    if asset_type in ["ollama_model", "gguf_model"] and not include_ollama:
+        return False
+
+    return True
 
 
 def get_downloaded_models(
     include_custom_models: bool = True,
     include_lora_adapters: bool = False,
+    include_ollama: Optional[bool] = None,
     deduplicate: bool = True,
 ) -> List[str]:
     """
@@ -33,6 +74,7 @@ def get_downloaded_models(
     Args:
         include_custom_models: Whether to include custom/merged models from non-HF directories
         include_lora_adapters: Whether to include LoRA adapters in the results
+        include_ollama: Whether to include Ollama models (GGUF format). If None, uses config setting
         deduplicate: Whether to remove duplicate model names (default True)
 
     Returns:
@@ -48,6 +90,14 @@ def get_downloaded_models(
         >>> all_models = get_downloaded_models(include_lora_adapters=True)
     """
     try:
+        # If include_ollama is None, check config setting
+        if include_ollama is None:
+            config_manager = ConfigManager()
+            config = config_manager.load_config()
+            include_ollama = config.get("scan_ollama", False) or bool(
+                config.get("ollama_directories", [])
+            )
+
         # Scan all configured directories
         all_items = scan_all_directories()
         logger.info(f"Found {len(all_items)} total assets across all directories")
@@ -56,21 +106,9 @@ def get_downloaded_models(
         seen_models: Set[str] = set()
 
         for item in all_items:
-            # Filter by asset type
-            asset_type = item.get("type", "unknown")
-
-            # Skip datasets and unknown types
-            if asset_type == "dataset" or asset_type == "unknown":
-                continue
-
-            # Skip LoRA adapters if not requested
-            if asset_type == "lora_adapter" and not include_lora_adapters:
-                continue
-
-            # Skip custom models if not requested
-            if (
-                asset_type in ["custom_model", "unknown_model"]
-                and not include_custom_models
+            # Check if asset should be included based on filters
+            if not _should_include_asset(
+                item, include_custom_models, include_lora_adapters, include_ollama
             ):
                 continue
 
@@ -130,6 +168,12 @@ def _extract_vllm_model_name(item: dict) -> Optional[str]:
             # Format: models--model-name (no publisher)
             # Replace "--" with "-" in model name
             return parts[0].replace("--", "-")
+
+    # Handle Ollama models
+    elif source_type == "ollama":
+        # Ollama models use format like "gpt-oss:120b"
+        # For vLLM, we return the path to the GGUF file
+        return item.get("path", name)
 
     # Handle custom models and LoRA adapters
     elif source_type == "custom_directory":
@@ -214,6 +258,38 @@ def get_model_info(model_name: str) -> Optional[dict]:
         return None
 
 
+def get_ollama_models() -> List[Dict[str, Any]]:
+    """
+    Get all Ollama models discovered on the system.
+
+    Returns:
+        List of Ollama model dictionaries with metadata
+    """
+    try:
+        models = get_ollama_items()
+        logger.info(f"Found {len(models)} Ollama models")
+        return models
+    except Exception as e:
+        logger.error(f"Error getting Ollama models: {e}")
+        return []
+
+
+def get_ollama_model_path(model_name: str) -> Optional[str]:
+    """
+    Get the path to an Ollama model's GGUF file.
+
+    Args:
+        model_name: Name of the Ollama model (e.g., "llama2:7b")
+
+    Returns:
+        Path to the GGUF file or None if not found
+    """
+    model_info = get_ollama_model_info(model_name)
+    if model_info:
+        return model_info.get("path")
+    return None
+
+
 class HFModelAPI:
     """
     Comprehensive API for HuggingFace model management.
@@ -274,11 +350,17 @@ class HFModelAPI:
             all_items = list(self.registry.datasets.values())
         elif asset_type == "custom_model":
             all_items = list(self.registry.custom_models.values())
+        elif asset_type == "ollama_model":
+            all_items = list(self.registry.ollama_models.values())
+        elif asset_type == "gguf_model":
+            all_items = list(self.registry.gguf_models.values())
         else:
             # Get all types based on filters
             if asset_type is None:
                 all_items.extend(self.registry.models.values())
                 all_items.extend(self.registry.custom_models.values())
+                all_items.extend(self.registry.ollama_models.values())
+                all_items.extend(self.registry.gguf_models.values())
                 if include_lora:
                     all_items.extend(self.registry.lora_adapters.values())
                 if include_datasets:
@@ -433,6 +515,59 @@ class HFModelAPI:
             List of directory information dictionaries
         """
         return self.config_manager.get_all_directories_with_types()
+
+    # Ollama-specific convenience methods
+
+    def toggle_ollama_scanning(self) -> bool:
+        """
+        Toggle Ollama model scanning on/off.
+
+        Returns:
+            New state of Ollama scanning (True if enabled, False if disabled)
+        """
+        return self.config_manager.toggle_ollama_scanning()
+
+    def add_ollama_directory(self, path: str) -> bool:
+        """
+        Add a custom Ollama directory for scanning.
+
+        Args:
+            path: Path to Ollama models directory
+
+        Returns:
+            True if directory was added successfully
+        """
+        return self.config_manager.add_ollama_directory(path)
+
+    def remove_ollama_directory(self, path: str) -> bool:
+        """
+        Remove a custom Ollama directory from scanning.
+
+        Args:
+            path: Path to Ollama directory to remove
+
+        Returns:
+            True if directory was removed successfully
+        """
+        return self.config_manager.remove_ollama_directory(path)
+
+    def get_ollama_status(self) -> Dict[str, Any]:
+        """
+        Get current Ollama configuration status.
+
+        Returns:
+            Dictionary with Ollama scanning status and configured directories
+        """
+        config = self.config_manager.load_config()
+        return {
+            "scan_enabled": config.get("scan_ollama", False),
+            "custom_directories": config.get("ollama_directories", []),
+            "default_directories": [
+                str(Path.home() / ".ollama" / "models"),
+                "/usr/share/ollama/.ollama/models",
+                "/var/lib/ollama/.ollama/models",
+            ],
+        }
 
     # LoRA Adapter Methods
 

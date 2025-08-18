@@ -53,6 +53,8 @@ class ModelRegistry:
         self.lora_adapters: Dict[str, Dict[str, Any]] = {}
         self.datasets: Dict[str, Dict[str, Any]] = {}
         self.custom_models: Dict[str, Dict[str, Any]] = {}
+        self.ollama_models: Dict[str, Dict[str, Any]] = {}
+        self.gguf_models: Dict[str, Dict[str, Any]] = {}
 
         # Cache management
         self._cache_file = (
@@ -111,6 +113,8 @@ class ModelRegistry:
             self.lora_adapters.clear()
             self.datasets.clear()
             self.custom_models.clear()
+            self.ollama_models.clear()
+            self.gguf_models.clear()
 
         # Get directories to scan
         directories_to_scan = self._get_directories_to_scan(incremental)
@@ -120,8 +124,8 @@ class ModelRegistry:
             self._last_scan_time = current_time
             return
 
-        # Perform scan
-        scanned_items = self._scan_directories(directories_to_scan)
+        # Use scan_all_directories to get all items including Ollama
+        scanned_items = scan_all_directories()
 
         # Process and categorize items
         self._process_scanned_items(scanned_items)
@@ -137,7 +141,8 @@ class ModelRegistry:
         logger.info(f"Registry scan completed in {elapsed:.2f}s")
         logger.info(
             f"Found: {len(self.models)} models, {len(self.lora_adapters)} LoRAs, "
-            f"{len(self.datasets)} datasets, {len(self.custom_models)} custom models"
+            f"{len(self.datasets)} datasets, {len(self.custom_models)} custom models, "
+            f"{len(self.ollama_models)} Ollama models, {len(self.gguf_models)} GGUF models"
         )
 
     def get_models_for_vllm(self) -> List[Dict[str, Any]]:
@@ -167,6 +172,22 @@ class ModelRegistry:
                 enriched["model_id"] = model_id
                 vllm_models.append(enriched)
 
+        # Include Ollama models (with experimental warning)
+        for model_id, model in self.ollama_models.items():
+            enriched = model.copy()
+            enriched["vllm_compatible"] = True  # Experimental
+            enriched["model_id"] = model_id
+            enriched["experimental"] = True
+            vllm_models.append(enriched)
+
+        # Include GGUF models (with experimental warning)
+        for model_id, model in self.gguf_models.items():
+            enriched = model.copy()
+            enriched["vllm_compatible"] = True  # Experimental
+            enriched["model_id"] = model_id
+            enriched["experimental"] = True
+            vllm_models.append(enriched)
+
         return vllm_models
 
     def get_all_assets(self) -> Dict[str, Dict[str, Any]]:
@@ -183,6 +204,8 @@ class ModelRegistry:
         all_assets.update(self.lora_adapters)
         all_assets.update(self.datasets)
         all_assets.update(self.custom_models)
+        all_assets.update(self.ollama_models)
+        all_assets.update(self.gguf_models)
 
         return all_assets
 
@@ -391,19 +414,29 @@ class ModelRegistry:
                 self.lora_adapters[asset_id] = item
             elif asset_type == "dataset":
                 self.datasets[asset_id] = item
+            elif asset_type == "ollama_model":
+                self.ollama_models[asset_id] = item
+            elif asset_type == "gguf_model":
+                self.gguf_models[asset_id] = item
             elif asset_type in ["custom_model", "unknown_model"]:
                 self.custom_models[asset_id] = item
 
     def _generate_asset_id(self, item: Dict[str, Any]) -> str:
         """Generate a unique ID for an asset."""
-        # Use path as primary identifier
+        asset_type = item.get("type", "unknown")
+
+        # For Ollama models, use name as ID to prevent duplicates from different paths
+        if asset_type == "ollama_model":
+            name = item.get("name", item.get("display_name", "unknown"))
+            return f"ollama:{name}"
+
+        # Use path as primary identifier for other assets
         path = item.get("path", "")
         if path:
             return str(Path(path).resolve())
 
         # Fallback to name + type
         name = item.get("name", item.get("display_name", "unknown"))
-        asset_type = item.get("type", "unknown")
         return f"{asset_type}:{name}"
 
     def _is_vllm_compatible(self, model: Dict[str, Any]) -> bool:
@@ -466,6 +499,8 @@ class ModelRegistry:
             self.lora_adapters,
             self.datasets,
             self.custom_models,
+            self.ollama_models,
+            self.gguf_models,
         ]
 
         for collection in collections:
@@ -502,6 +537,8 @@ class ModelRegistry:
             self.lora_adapters = cache_data.get("lora_adapters", {})
             self.datasets = cache_data.get("datasets", {})
             self.custom_models = cache_data.get("custom_models", {})
+            self.ollama_models = cache_data.get("ollama_models", {})
+            self.gguf_models = cache_data.get("gguf_models", {})
 
             # Restore metadata
             self._last_scan_time = cache_data.get("last_scan_time", 0)
@@ -526,6 +563,8 @@ class ModelRegistry:
                 "lora_adapters": self.lora_adapters,
                 "datasets": self.datasets,
                 "custom_models": self.custom_models,
+                "ollama_models": self.ollama_models,
+                "gguf_models": self.gguf_models,
                 "last_scan_time": self._last_scan_time,
                 "directory_mtimes": self._directory_mtimes,
                 "timestamp": datetime.now().isoformat(),
@@ -549,6 +588,8 @@ class ModelRegistry:
             self.lora_adapters,
             self.datasets,
             self.custom_models,
+            self.ollama_models,
+            self.gguf_models,
         ]:
             for asset in collection.values():
                 total_size += asset.get("size", 0)
@@ -558,10 +599,14 @@ class ModelRegistry:
             "lora_count": len(self.lora_adapters),
             "datasets_count": len(self.datasets),
             "custom_count": len(self.custom_models),
+            "ollama_count": len(self.ollama_models),
+            "gguf_count": len(self.gguf_models),
             "total_count": len(self.models)
             + len(self.lora_adapters)
             + len(self.datasets)
-            + len(self.custom_models),
+            + len(self.custom_models)
+            + len(self.ollama_models)
+            + len(self.gguf_models),
             "total_size": total_size,
             "vllm_compatible_count": len(self.get_models_for_vllm()),
             "cache_age": (
