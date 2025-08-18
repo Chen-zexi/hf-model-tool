@@ -5,6 +5,29 @@ All notable changes to HF-MODEL-TOOL will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2025-08-18
+
+### Added
+- **Ollama Model Support**: Full integration with Ollama models
+  - Automatic detection of Ollama models in system and user directories
+  - Toggle Ollama scanning on/off via configuration
+  - Support for both `/home/.ollama` and `/usr/share/ollama` directories
+- **Permission Error Handling**: Graceful handling of permission-denied errors
+  - No more crashes when attempting to delete system-owned files
+  - Helpful hints suggesting sudo commands for system directories
+  - Summary statistics showing successful vs failed operations
+
+### Changed
+- **Enhanced Path Display**: Improved path information in deletion and deduplication menus
+  - Smart path formatting showing meaningful prefixes (e.g., "user: ~/.ollama", "system: /usr/share/ollama")
+  - Added modification dates to help identify which version to keep/delete
+  - Extracted model names from HuggingFace cache paths for clarity
+- **Improved Deduplication**:
+  - Registry now uses model names for Ollama deduplication instead of file paths
+
+### Fixed
+- Corrected field name from "name" to "served_model_name" for vLLM compatibility
+
 ## [0.2.4] - 2025-08-17
 
 ### Added

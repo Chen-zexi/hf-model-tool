@@ -22,7 +22,7 @@ A CLI tool for managing your locally downloaded Huggingface models and datasets
 ## Features
 
 ### Core Functionality
-*   **Smart Asset Detection:** Detect HuggingFace models, datasets, LoRA adapters, fine-tuned models, and custom formats
+*   **Smart Asset Detection:** Detect HuggingFace models, datasets, LoRA adapters, fine-tuned models, Ollama models, and custom formats
 *   **Asset Listing:** View all your AI assets with size information and metadata
 *   **Duplicate Detection:** Find and clean duplicate downloads to save disk space
 *   **Asset Details:** View model configurations and dataset documentation with rich formatting
@@ -34,6 +34,7 @@ A CLI tool for managing your locally downloaded Huggingface models and datasets
 - **HuggingFace Models & Datasets:** Standard cached downloads from Hugging Face Hub
 - **LoRA Adapters:** Fine-tuned adapters from training frameworks like Unsloth
 - **Custom Models:** Fine-tuned models, merged models, and other custom formats
+- **Ollama Models:** GGUF format models from Ollama (both user and system directories)
 
 ## Installation
 
@@ -61,11 +62,15 @@ Launches the interactive CLI with:
 - Asset management tools for all supported formats
 - Easy directory configuration and management
 
-### Integrating in vLLM-CLI
+### Integration with vLLM-CLI
 
 The tool provides API specifically designed for [vLLM-CLI](https://github.com/Chen-zexi/vllm-cli) for model discovery and management. 
 
 Also can be launched directly from [vLLM-CLI](https://github.com/Chen-zexi/vllm-cli)
+
+#### Serving Custom Models in vLLM-CLI
+For detailed instructions on serving models from custom directories with vLLM-CLI, see:
+- [**Custom Model Serving Guide**](https://github.com/Chen-zexi/vllm-cli/blob/main/docs/custom-model-serving.md) - Complete guide for vLLM-CLI integration
 
 ### Python API Usage
 

@@ -300,7 +300,9 @@ def show_welcome_screen() -> None:
         features.append("🎯 Features:\n", style="bold white")
         features.append("  • ", style="cyan")
         features.append("Smart Asset Detection", style="white")
-        features.append(" - LLM, LoRA Adapters, Ollama, and Datasets\n", style="dim white")
+        features.append(
+            " - LLM, LoRA Adapters, Ollama, and Datasets\n", style="dim white"
+        )
         features.append("  • ", style="cyan")
         features.append("Asset Management", style="white")
         features.append(
