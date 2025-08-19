@@ -111,6 +111,9 @@ class AssetDetector:
         total_size = 0
         try:
             for file_path in directory.rglob("*"):
+                # Skip hidden files and directories
+                if any(part.startswith('.') for part in file_path.parts):
+                    continue
                 if file_path.is_file():
                     try:
                         total_size += file_path.stat().st_size
